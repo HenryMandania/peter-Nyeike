@@ -11,6 +11,7 @@ use Filament\Navigation\MenuItem;
 use Filament\Navigation\NavigationGroup;
 use Filament\Panel;
 use Filament\PanelProvider;
+use Filament\Support\Colors\Color;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
@@ -27,7 +28,10 @@ class FieldOperationsPanelProvider extends PanelProvider
             ->path('field-operations')
             ->brandName('PurchaseMaster')
             ->login()
-            ->darkMode(true) // ✅ enable dark mode
+            ->darkMode(true)
+            ->colors([
+                'primary' => Color::Amber,
+            ])
             ->viteTheme('resources/css/app.css')
             ->maxContentWidth('full')
             ->spa()
@@ -41,9 +45,16 @@ class FieldOperationsPanelProvider extends PanelProvider
                 in: app_path('Filament/FieldOperations/Resources'),
                 for: 'App\\Filament\\FieldOperations\\Resources'
             )
-            ->discoverPages(in: app_path('Filament/FieldOperations/Pages'), for: 'App\\Filament\\FieldOperations\\Pages')
-            ->discoverWidgets(in: app_path('Filament/FieldOperations/Widgets'), for: 'App\\Filament\\FieldOperations\\Widgets')
+            ->discoverPages(
+                in: app_path('Filament/FieldOperations/Pages'), 
+                for: 'App\\Filament\\FieldOperations\\Pages'
+            )
+            ->discoverWidgets(
+                in: app_path('Filament/FieldOperations/Widgets'), 
+                for: 'App\\Filament\\FieldOperations\\Widgets'
+            )
             ->navigationGroups([
+                // ✅ Icons removed from groups to prevent conflicts with Resource icons
                 NavigationGroup::make()->label('Shifts'),
                 NavigationGroup::make()->label('Administration'),
                 NavigationGroup::make()->label('Accounts'),

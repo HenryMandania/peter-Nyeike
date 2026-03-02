@@ -11,6 +11,7 @@ use Filament\Navigation\NavigationGroup;
 use Filament\Pages\Dashboard;
 use Filament\Panel;
 use Filament\PanelProvider;
+use Filament\Support\Colors\Color;
 use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Foundation\Http\Middleware\VerifyCsrfToken;
@@ -28,7 +29,10 @@ class AdminPanelProvider extends PanelProvider
             ->path('admin')
             ->brandName('PurchaseMaster')
             ->login()
-            ->darkMode(true) // ✅ enable dark mode
+            ->darkMode(true)
+            ->colors([
+                'primary' => Color::Blue, // Distinct color from Field Operations
+            ])
             ->viteTheme('resources/css/app.css')
             ->userMenuItems([
                 MenuItem::make()
@@ -36,14 +40,15 @@ class AdminPanelProvider extends PanelProvider
                     ->url('/field-operations')
                     ->icon('heroicon-o-arrow-path'),
             ])
-            ->widgets([])
-            ->navigationGroups([
-                NavigationGroup::make()->label('Users Group')->icon('heroicon-o-users'),
-                NavigationGroup::make()->label('Group Purchases')->icon('heroicon-o-shopping-cart'),
-                NavigationGroup::make()->label('Settings')->icon('heroicon-o-cog-6-tooth'),
-            ])
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\\Filament\\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\\Filament\\Pages')
+            ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\\Filament\\Widgets')
+            ->navigationGroups([
+                // ✅ Icons removed to prevent 500 errors when items also have icons
+                NavigationGroup::make()->label('Users Group'),
+                NavigationGroup::make()->label('Group Purchases'),
+                NavigationGroup::make()->label('Settings'),
+            ])
             ->pages([
                 Dashboard::class,
             ])
