@@ -23,6 +23,15 @@ class Purchase extends Model
         'updated_by',
         'approved_by',
         'status',
+        'notes',
+        'reference_no',
+    ];
+
+    // Default attributes for new records
+    protected $attributes = [
+        'status' => 'pending',
+        'transaction_fee' => 0,
+        'payment_method' => 'Cash',
     ];
 
     protected static function booted(): void
@@ -33,7 +42,7 @@ class Purchase extends Model
                 ->where('status', 'open')
                 ->first();
 
-            if (! $activeShift) {
+            if (!$activeShift) {
                 throw ValidationException::withMessages([
                     'vendor_id' => 'No active shift found.'
                 ]);
@@ -56,7 +65,7 @@ class Purchase extends Model
             $purchase->shift_id     = $activeShift->id;
             $purchase->created_by   = Auth::id();
             $purchase->total_amount = $transactionCost;
-            $purchase->status       = $purchase->status ?? 'waiting';
+            $purchase->status       = $purchase->status ?? 'pending';
         });
 
         static::updating(function ($purchase) {
