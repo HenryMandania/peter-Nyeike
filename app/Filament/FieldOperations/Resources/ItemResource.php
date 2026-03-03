@@ -4,13 +4,14 @@ namespace App\Filament\FieldOperations\Resources;
 
 use App\Models\Item;
 use Filament\Forms;
-use Filament\Forms\Form; // Added missing import
+use Filament\Forms\Form;  
 use Filament\Forms\Components\TextInput;
 use Filament\Tables\Columns\TextColumn;
-use Filament\Tables\Actions\EditAction; // Use Tables namespace
-use Filament\Tables\Actions\BulkActionGroup; // Use Tables namespace
-use Filament\Tables\Actions\DeleteBulkAction; // Common addition for bulk actions
-use App\Filament\FieldOperations\Resources\ItemResource\Pages;
+use Filament\Tables\Actions\EditAction;  
+use Filament\Tables\Actions\BulkActionGroup;  
+use Filament\Tables\Actions\DeleteBulkAction;  
+use App\Filament\FieldOperations\Resources\ItemResource\Pages; 
+use App\Filament\FieldOperations\Resources\ItemResource\RelationManagers\ItemRelationManager; 
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
@@ -31,7 +32,7 @@ class ItemResource extends Resource
     public static function form(Form $form): Form
     {
         return $form
-            ->schema([ // Changed from components() to schema()
+            ->schema([  
                 TextInput::make('name')
                     ->required()
                     ->maxLength(255),
@@ -62,10 +63,10 @@ class ItemResource extends Resource
             ->filters([
                 //
             ])
-            ->actions([ // Changed from recordActions() to actions()
+            ->actions([ 
                 EditAction::make(),
             ])
-            ->bulkActions([ // Changed from toolbarActions() to bulkActions()
+            ->bulkActions([ 
                 BulkActionGroup::make([
                     Tables\Actions\DeleteBulkAction::make(),
                 ]),
@@ -75,15 +76,17 @@ class ItemResource extends Resource
     public static function getRelations(): array
     {
         return [
-            //
+            ItemRelationManager::class,
         ];
     }
+    
 
     public static function getPages(): array
     {
         return [
             'index' => Pages\ListItems::route('/'),
             'create' => Pages\CreateItem::route('/create'),
+            'view' => Pages\ViewItem::route('/view'),
             'edit' => Pages\EditItem::route('/{record}/edit'),
         ];
     }

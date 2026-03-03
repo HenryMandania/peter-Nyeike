@@ -3,18 +3,17 @@
 namespace App\Filament\FieldOperations\Resources;
 
 use App\Models\Supplier;
-use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Forms\Components\Section;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Hidden;
+use Filament\Resources\Resource;
+use Filament\Tables\Table;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Actions\EditAction;
-use App\Filament\FieldOperations\Resources\SupplierResource\Pages;
-use Filament\Resources\Resource;
-use Filament\Tables;
-use Filament\Tables\Table;
 use Illuminate\Support\Facades\Auth;
+use App\Filament\FieldOperations\Resources\SupplierResource\Pages;
+use App\Filament\FieldOperations\Resources\SupplierResource\RelationManagers\SupplierRelationManager;
 
 class SupplierResource extends Resource
 {
@@ -37,22 +36,19 @@ class SupplierResource extends Resource
                             ->label('Phone Number')
                             ->tel()
                             ->required()
-                            // 1. Prevents the SQL crash by checking before saving
-                            // 2. ignoreRecord: true allows saving when editing the SAME supplier
-                            ->unique(ignoreRecord: true) 
-                            // 3. Custom message instead of the technical SQL error
+                            ->unique(ignoreRecord: true)
+                            ->length(10)
+                            ->placeholder('07xxxxxxxx')
                             ->validationMessages([
                                 'unique' => 'This phone number is already registered to another supplier.',
-                            ])
-                            // Optional: Ensures standard 10-digit Kenyan format
-                            ->length(10)
-                            ->placeholder('07xxxxxxxx'),
+                            ]),
 
                         TextInput::make('location'),
 
                         Hidden::make('created_by')
                             ->default(Auth::id()),
-                    ])->columns(2),
+                    ])
+                    ->columns(2),
             ]);
     }
 
@@ -63,10 +59,13 @@ class SupplierResource extends Resource
                 TextColumn::make('name')
                     ->searchable()
                     ->sortable(),
+
                 TextColumn::make('phone')
                     ->searchable(),
+
                 TextColumn::make('location')
                     ->placeholder('N/A'),
+
                 TextColumn::make('created_at')
                     ->dateTime('d M Y')
                     ->label('Registered On'),
@@ -76,12 +75,20 @@ class SupplierResource extends Resource
             ]);
     }
 
+    public static function getRelations(): array
+    {
+        return [
+            SupplierRelationManager::class,
+        ];
+    }
+
     public static function getPages(): array
     {
         return [
-            'index' => Pages\ListSuppliers::route('/'),
+            'index'  => Pages\ListSuppliers::route('/'),
             'create' => Pages\CreateSupplier::route('/create'),
-            'edit' => Pages\EditSupplier::route('/{record}/edit'),
+            'view'   => Pages\ViewSupplier::route('/{record}'),
+            'edit'   => Pages\EditSupplier::route('/{record}/edit'),
         ];
     }
 }
