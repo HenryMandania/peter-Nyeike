@@ -57,8 +57,7 @@ class ExpenseCategoryResource extends Resource
                 EditAction::make(),
             ])
             ->bulkActions([  
-                BulkActionGroup::make([
-                    DeleteBulkAction::make(),
+                BulkActionGroup::make([    
                 ]),
             ]);
     }
