@@ -24,7 +24,7 @@ class ExpenseOverview extends BaseWidget
     {
         $query = $this->getPageTableQuery();
         
-        // Trend data: Last 12 expense amounts for the sparkline
+        // Trend data: Last 12 expense amounts for the sparklines
         $expenseTrend = Expense::orderBy('created_at', 'desc')
             ->limit(12)
             ->pluck('amount')
@@ -50,18 +50,21 @@ class ExpenseOverview extends BaseWidget
             Stat::make('Avg. Transaction', 'KES ' . number_format($query->avg('amount') ?? 0, 2))
                 ->description('Average cost per expense')
                 ->descriptionIcon('heroicon-m-calculator')
+                ->chart($expenseTrend ?? [0, 0]) // Added trend line
                 ->color('primary')
                 ->icon('heroicon-m-receipt-percent'),
 
             Stat::make('Highest Category', $topCategory?->category?->name ?? 'None')
                 ->description($topCategory ? 'KES ' . number_format($topCategory->total, 2) . ' total' : 'No expenses recorded')
                 ->descriptionIcon('heroicon-m-tag')
+                ->chart($expenseTrend ?? [0, 0]) // Added trend line
                 ->color('warning')
                 ->icon('heroicon-m-funnel'),
 
             Stat::make('Record Count', $query->count())
                 ->description('Individual receipts filed')
                 ->descriptionIcon('heroicon-m-list-bullet')
+                ->chart($expenseTrend ?? [0, 0]) // Added trend line
                 ->color('info')
                 ->icon('heroicon-m-hashtag'),
         ];
