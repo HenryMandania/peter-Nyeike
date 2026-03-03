@@ -17,12 +17,10 @@ class ShiftStatsOverview extends BaseWidget
 
     protected function getStats(): array
     {
-        // 1. Network Liquidity Calculations
         $openingBalances = (float) Shift::sum('opening_balance');
         $approvedFloats = (float) FloatRequest::where('status', 'approved')->sum('amount');
         $totalInflow = $openingBalances + $approvedFloats;
         
-        // 2. Outflow Data
         $totalPurchases = (float) Purchase::sum('total_amount');
         $totalExpenses = (float) Expense::sum('amount');
         $activeShiftsCount = Shift::where('status', 'open')->count();
@@ -31,7 +29,7 @@ class ShiftStatsOverview extends BaseWidget
             Stat::make('Network Liquidity', 'KES ' . number_format($totalInflow, 2))
                 ->description('Total cash flow in network')
                 ->descriptionIcon('heroicon-m-arrow-trending-up')
-                ->chart([7, 2, 10, 3, 15, 4, 17]) // Visual trend line
+                ->chart([7, 2, 10, 3, 15, 4, 17])
                 ->color('success'),
 
             Stat::make('Total Procurement', 'KES ' . number_format($totalPurchases, 2))
@@ -44,11 +42,12 @@ class ShiftStatsOverview extends BaseWidget
                 ->description('Cumulative field expenses')
                 ->descriptionIcon('heroicon-m-banknotes')
                 ->chart([2, 10, 5, 12, 4, 17, 4])
-                ->color($totalExpenses > ($totalInflow * 0.2) ? 'danger' : 'warning'), // Turns red if > 20% of inflow
+                ->color($totalExpenses > ($totalInflow * 0.2) ? 'danger' : 'warning'),
 
             Stat::make('Active Field Shifts', $activeShiftsCount)
                 ->description($activeShiftsCount > 0 ? 'Operations in progress' : 'No active field units')
                 ->descriptionIcon('heroicon-m-bolt')
+                ->chart([1, 3, 2, 5, 4, 6, $activeShiftsCount])
                 ->color($activeShiftsCount > 0 ? 'primary' : 'gray'),
         ];
     }

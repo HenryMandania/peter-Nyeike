@@ -6,7 +6,7 @@ use App\Models\Expense;
 use App\Models\Shift;
 use App\Services\BalanceService;
 use Filament\Forms;
-use Filament\Forms\Form; // Use Form, not Schema
+use Filament\Forms\Form; 
 use Filament\Forms\Components\Section;
 use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Components\Select;
@@ -16,8 +16,7 @@ use Filament\Forms\Components\Hidden;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Columns\Summarizers\Sum;
 use Filament\Tables\Filters\SelectFilter;
-use Filament\Tables\Actions\EditAction; // Tables namespace for row actions
-use Filament\Tables\Actions\DeleteAction; // Tables namespace for row actions
+use Filament\Tables\Actions\EditAction; 
 use App\Filament\FieldOperations\Resources\ExpenseResource\Pages;
 use Filament\Resources\Resource;
 use Filament\Tables;
@@ -127,7 +126,7 @@ class ExpenseResource extends Resource
             ])
             ->actions([ // Changed from recordActions() to actions()
                 EditAction::make(),
-                DeleteAction::make(),
+               
             ]);
     }
 

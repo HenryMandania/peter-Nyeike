@@ -9,7 +9,6 @@ use Filament\Forms\Components\TextInput;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Actions\EditAction;  
 use Filament\Tables\Actions\BulkActionGroup;  
-use Filament\Tables\Actions\DeleteBulkAction;  
 use App\Filament\FieldOperations\Resources\ItemResource\Pages; 
 use App\Filament\FieldOperations\Resources\ItemResource\RelationManagers\ItemRelationManager; 
 use Filament\Resources\Resource;
@@ -67,9 +66,7 @@ class ItemResource extends Resource
                 EditAction::make(),
             ])
             ->bulkActions([ 
-                BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make(),
-                ]),
+               
             ]);
     }
 

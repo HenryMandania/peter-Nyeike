@@ -4,12 +4,11 @@ namespace App\Filament\FieldOperations\Resources;
 
 use App\Models\ExpenseCategory;
 use Filament\Forms;
-use Filament\Forms\Form; // Use Form, not Schema
+use Filament\Forms\Form; 
 use Filament\Forms\Components\TextInput;
 use Filament\Tables\Columns\TextColumn;
-use Filament\Tables\Actions\EditAction; // Standard v3 path
+use Filament\Tables\Actions\EditAction; 
 use Filament\Tables\Actions\BulkActionGroup;
-use Filament\Tables\Actions\DeleteBulkAction;
 use App\Filament\FieldOperations\Resources\ExpenseCategoryResource\Pages;
 use Filament\Resources\Resource;
 use Filament\Tables;
@@ -30,7 +29,7 @@ class ExpenseCategoryResource extends Resource
     public static function form(Form $form): Form
     {
         return $form
-            ->schema([ // Changed from components()
+            ->schema([  
                 TextInput::make('name')
                     ->required()
                     ->maxLength(255),
@@ -54,10 +53,10 @@ class ExpenseCategoryResource extends Resource
             ->filters([
                 //
             ])
-            ->actions([ // Standard v3 row actions
+            ->actions([  
                 EditAction::make(),
             ])
-            ->bulkActions([ // Standard v3 bulk actions
+            ->bulkActions([  
                 BulkActionGroup::make([
                     DeleteBulkAction::make(),
                 ]),

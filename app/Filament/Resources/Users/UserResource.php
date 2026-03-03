@@ -10,7 +10,6 @@ use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Select;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Actions\EditAction;
-use Filament\Tables\Actions\DeleteAction;
 use App\Filament\Resources\Users\UserResource\Pages;
 use Filament\Resources\Resource;
 use Filament\Tables;
@@ -66,11 +65,11 @@ class UserResource extends Resource
             ])
             ->actions([ // Changed from recordActions()
                 EditAction::make(),
-                DeleteAction::make(),
+             
             ])
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make(),
+                  
                 ]),
             ]);
     }

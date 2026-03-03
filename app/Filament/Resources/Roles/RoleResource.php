@@ -2,17 +2,15 @@
 
 namespace App\Filament\Resources\Roles;
 
-use App\Models\Role; // Use your local Role model if it extends Spatie
+use App\Models\Role; 
 use Filament\Forms;
-use Filament\Forms\Form; // Corrected
+use Filament\Forms\Form; 
 use Filament\Forms\Components\Section;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\CheckboxList;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Actions\EditAction;
-use Filament\Tables\Actions\DeleteAction;
 use Filament\Tables\Actions\BulkActionGroup;
-use Filament\Tables\Actions\DeleteBulkAction;
 use App\Filament\Resources\Roles\RoleResource\Pages;
 use Filament\Resources\Resource;
 use Filament\Tables;
@@ -24,10 +22,10 @@ class RoleResource extends Resource
     
     protected static ?string $navigationGroup = 'Users Group';
 
-    public static function form(Form $form): Form // Corrected type-hint
+    public static function form(Form $form): Form 
     {
         return $form
-            ->schema([ // Changed from components()
+            ->schema([ 
                 Section::make('Role Management')
                     ->description('Define the role name and assign specific permissions.')
                     ->schema([
@@ -69,13 +67,11 @@ class RoleResource extends Resource
                     ->badge()
                     ->color('success'),
             ])
-            ->actions([ // Standard v3 location for row actions
-                EditAction::make(),
-                DeleteAction::make(),
+            ->actions([ 
+                EditAction::make(),                
             ])
-            ->bulkActions([ // Standard v3 location for bulk actions
-                BulkActionGroup::make([
-                    DeleteBulkAction::make(),
+            ->bulkActions([
+                BulkActionGroup::make([                   
                 ]),
             ]);
     }
