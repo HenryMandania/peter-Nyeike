@@ -164,23 +164,45 @@ class PurchaseResource extends Resource
                     ->placeholder('Waiting...'),
             ])
             ->defaultSort('created_at', 'desc')
-            ->actions([ // Fixed from recordActions() to actions()
+            ->actions([
+                
                 ViewAction::make()
-                    ->visible(fn (Purchase $record) => $record->approved_by !== null),
+                    ->visible(fn (Purchase $record) => 
+                        $record->approved_by !== null || 
+                        ($record->shift && $record->shift->status !== 'open')
+                    ),
 
+                
                 EditAction::make()
-                    ->visible(fn (Purchase $record) => $record->approved_by === null),
+                    ->visible(fn (Purchase $record) => 
+                        $record->approved_by === null && 
+                        (!$record->shift || $record->shift->status === 'open')
+                    ),
 
-                Action::make('approve')
+                
+                Tables\Actions\Action::make('approve')
                     ->label('Approve')
                     ->icon('heroicon-m-check-badge')
                     ->color('success')
                     ->requiresConfirmation()
-                    ->visible(fn (Purchase $record) => $record->approved_by === null)
+                    ->visible(fn (Purchase $record) => 
+                        $record->approved_by === null && 
+                        (!$record->shift || $record->shift->status === 'open')
+                    )
                     ->action(fn (Purchase $record) => $record->update([
                         'approved_by' => Auth::id(),
                     ])),
             ]);
+    }
+
+   
+    public static function canEdit(\Illuminate\Database\Eloquent\Model $record): bool
+    {
+        if ($record->shift) {
+            return $record->shift->status === 'open' && $record->approved_by === null;
+        }
+
+        return $record->approved_by === null;
     }
 
     public static function getPages(): array

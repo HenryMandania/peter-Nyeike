@@ -4,7 +4,7 @@ namespace App\Filament\FieldOperations\Resources\ItemResource\Pages;
 
 use Filament\Actions\DeleteAction;
 use App\Filament\FieldOperations\Resources\ItemResource;
-use Filament\Actions;
+use App\Filament\FieldOperations\Resources\ItemResource\Widgets\ItemOverview;
 use Filament\Resources\Pages\EditRecord;
 
 class EditItem extends EditRecord
@@ -15,6 +15,13 @@ class EditItem extends EditRecord
     {
         return [
             DeleteAction::make(),
+        ];
+    }
+
+    protected function getHeaderWidgets(): array
+    {
+        return [
+            ItemOverview::class,
         ];
     }
 }
