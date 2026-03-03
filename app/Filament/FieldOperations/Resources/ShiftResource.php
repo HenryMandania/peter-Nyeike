@@ -206,62 +206,90 @@ class ShiftResource extends Resource
             ])
             ->actions([
                 ViewAction::make(),
-
+            
                 Action::make('close_shift')
                     ->label('Close Shift')
                     ->icon('heroicon-m-lock-closed')
                     ->color('danger')
+                    // Only show for open shifts
                     ->visible(fn (Shift $record): bool => $record->status === 'open')
                     ->requiresConfirmation()
                     ->modalHeading('Closing Shift Session')
+                    ->modalDescription('Please verify all transactions and float requests before closing.')
                     ->mountUsing(function (Forms\ComponentContainer $form, Shift $record, BalanceService $service) {
                         $form->fill([
                             'system_balance' => $service->calculate($record),
                         ]);
                     })
-                    ->form([ // <--- FIXED: Changed from schema() to form() for consistent v3 behavior
-                        Placeholder::make('info')
-                            ->content('Ensure all physical cash is counted. Closure is only allowed if cash matches or exceeds the system balance.'),
-
+                    ->form([
+                        Placeholder::make('warning_info')
+                            ->label('Important')
+                            ->content('Ensure all physical cash is counted. You cannot close this shift if there are pending float requests.')
+                            ->columnSpanFull(),
+            
                         TextInput::make('system_balance')
                             ->label('Expected System Balance')
                             ->numeric()
                             ->prefix('KES')
                             ->readOnly(),
-
+            
                         TextInput::make('closing_balance')
                             ->label('Actual Cash Counted')
                             ->numeric()
                             ->prefix('KES')
                             ->required()
+                            ->minValue(0)
+                            ->hint('Physical cash in hand')
                             ->autofocus(),
                     ])
-                    ->action(function (Shift $record, array $data): void {
-                        $expected = (float) $data['system_balance'];
-                        $actual = (float) $data['closing_balance'];
-                        $variance = $actual - $expected;
-
-                        if ($variance < 0) {
+                    ->action(function (Shift $record, array $data, BalanceService $service): void {
+                        // 1. Loophole Fix: Check for Pending Float Requests
+                        $hasPendingFloats = $record->floatRequests()
+                            ->where('status', 'pending')
+                            ->exists();
+            
+                        if ($hasPendingFloats) {
                             Notification::make()
-                                ->title('Reconciliation Needed')
-                                ->body("Cannot close shift with a shortage of KES " . number_format(abs($variance), 2) . ". Please balance your cash or contact an admin.")
+                                ->title('Cannot Close Shift')
+                                ->body('There are pending float requests. Please approve or reject them before closing the shift.')
                                 ->danger()
                                 ->persistent()
                                 ->send();
-
+                            
                             return;
                         }
-
-                        $record->update([
-                            'system_balance' => $expected,
-                            'closing_balance' => $actual,
-                            'variance' => $variance,
-                            'status' => 'closed',
-                            'closed_at' => now(),
-                        ]);
-
+            
+                        // 2. Re-calculate balance inside action to prevent stale data
+                        $expected = (float) $service->calculate($record);
+                        $actual = (float) $data['closing_balance'];
+                        $variance = $actual - $expected;
+            
+                        // 3. Informative Balance Verification
+                        if ($variance < 0) {
+                            Notification::make()
+                                ->title('Reconciliation Needed')
+                                ->body("Insufficient Balance. There is a shortage of KES " . number_format(abs($variance), 2) . ". Available balance does not match purchase/expense records.")
+                                ->danger()
+                                ->persistent()
+                                ->send();
+            
+                            return;
+                        }
+            
+                        // 4. Atomic Update
+                        \DB::transaction(function () use ($record, $expected, $actual, $variance) {
+                            $record->update([
+                                'system_balance'  => $expected,
+                                'closing_balance' => $actual,
+                                'variance'        => $variance,
+                                'status'          => 'closed',
+                                'closed_at'       => now(),
+                            ]);
+                        });
+            
                         Notification::make()
                             ->title('Shift Closed Successfully')
+                            ->body("There was enough to make this Purchase/Closure. Variance: KES " . number_format($variance, 2))
                             ->success()
                             ->send();
                     }),

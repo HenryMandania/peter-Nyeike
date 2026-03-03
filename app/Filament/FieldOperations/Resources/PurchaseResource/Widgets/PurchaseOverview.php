@@ -13,17 +13,15 @@ class PurchaseOverview extends BaseWidget
 
     protected function getStats(): array
     {
-        $query = Purchase::query();
-
-        $totalWeight = $query->sum('quantity');
-        $averagePrice = $query->avg('unit_price') ?? 0;
-        $totalFees = $query->sum('transaction_fee');
-        $grandTotal = $query->sum('total_amount');
+        // Use a fresh query for totals to ensure they aren't affected by the chart limit
+        $totalWeight = Purchase::sum('quantity');
+        $averagePrice = Purchase::avg('unit_price') ?? 0;
+        $totalFees = Purchase::sum('transaction_fee');
+        $grandTotal = Purchase::sum('total_amount');
 
         $charts = $this->getChartData();
 
         return [
-
             Stat::make('Total Weight', number_format($totalWeight, 2))
                 ->description('Sum of all weights')
                 ->descriptionIcon('heroicon-m-scale')
@@ -34,6 +32,7 @@ class PurchaseOverview extends BaseWidget
             Stat::make('Average Unit Price', 'KES ' . number_format($averagePrice, 2))
                 ->description('Mean price per unit')
                 ->descriptionIcon('heroicon-m-arrows-right-left')
+                ->chart($charts['avg_price']) // Added the missing trend line
                 ->color('primary')
                 ->icon('heroicon-m-tag'),
 
@@ -55,29 +54,34 @@ class PurchaseOverview extends BaseWidget
 
     protected function getChartData(): array
     {
+        // Fetch last 7 days of activity
         $data = Purchase::select([
                 DB::raw('SUM(quantity) as weight'),
                 DB::raw('SUM(transaction_fee) as fees'),
                 DB::raw('SUM(total_amount) as total'),
+                DB::raw('AVG(unit_price) as avg_price'),
                 DB::raw('DATE(created_at) as date')
             ])
+            ->where('created_at', '>=', now()->subDays(7))
             ->groupBy(DB::raw('DATE(created_at)'))
             ->orderBy('date', 'asc')
-            ->limit(10)
             ->get();
 
         if ($data->isEmpty()) {
+            $defaults = array_fill(0, 7, 0);
             return [
-                'weight' => [0, 0, 0, 0],
-                'fees'   => [0, 0, 0, 0],
-                'total'  => [0, 0, 0, 0],
+                'weight'    => $defaults,
+                'fees'      => $defaults,
+                'total'     => $defaults,
+                'avg_price' => $defaults,
             ];
         }
 
         return [
-            'weight' => $data->pluck('weight')->toArray(),
-            'fees'   => $data->pluck('fees')->toArray(),
-            'total'  => $data->pluck('total')->toArray(),
+            'weight'    => $data->pluck('weight')->toArray(),
+            'fees'      => $data->pluck('fees')->toArray(),
+            'total'     => $data->pluck('total')->toArray(),
+            'avg_price' => $data->pluck('avg_price')->toArray(),
         ];
     }
 }

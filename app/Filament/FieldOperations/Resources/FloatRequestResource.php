@@ -3,18 +3,20 @@
 namespace App\Filament\FieldOperations\Resources;
 
 use App\Models\FloatRequest;
+use App\Models\Shift;
 use Filament\Forms;
 use Filament\Forms\Form;
-use Filament\Forms\Components\Section; // Fixed import path
+use Filament\Forms\Components\Section;
 use Filament\Forms\Components\TextInput;
 use Filament\Tables\Columns\TextColumn;
-use Filament\Tables\Actions\Action; // Fixed namespace for table actions
-use Filament\Tables\Actions\EditAction; // Fixed namespace for table actions
+use Filament\Tables\Actions\Action;
+use Filament\Tables\Actions\EditAction;
 use App\Filament\FieldOperations\Resources\FloatRequestResource\Pages;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Support\Facades\Auth;
+use Closure;
 
 class FloatRequestResource extends Resource
 {
@@ -24,19 +26,41 @@ class FloatRequestResource extends Resource
     protected static ?string $navigationIcon = 'heroicon-o-hand-raised';
     protected static ?int $navigationSort = 3;
 
+    /**
+     * Prevents the "Create" button from appearing if no active shift exists.
+     */
+    public static function canCreate(): bool
+    {
+        return Shift::where('user_id', Auth::id())
+            ->where('status', 'open')
+            ->exists();
+    }
+
     public static function form(Form $form): Form
     {
         return $form
-            ->schema([ // Changed from components() to schema()
+            ->schema([
                 Section::make('Request Details')
-                    ->description('Request a top-up. The default is your last closing balance.')
+                    ->description('Request a top-up. You must have an active shift to proceed.')
                     ->schema([
                         TextInput::make('amount')
                             ->label('Amount to Request')
                             ->required()
                             ->numeric()
                             ->default(fn () => FloatRequest::getLastClosingBalance(Auth::id()))
-                            ->prefix('KES'),
+                            ->prefix('KES')
+                            // Hard validation check during submission
+                            ->rules([
+                                fn (): Closure => function (string $attribute, $value, Closure $fail) {
+                                    $hasShift = Shift::where('user_id', Auth::id())
+                                        ->where('status', 'open')
+                                        ->exists();
+
+                                    if (!$hasShift) {
+                                        $fail("You cannot request float without an active shift. Please open a shift first.");
+                                    }
+                                },
+                            ]),
                     ]),
             ]);
     }
@@ -65,7 +89,7 @@ class FloatRequestResource extends Resource
                     ->dateTime()
                     ->sortable(),
             ])
-            ->actions([ // Changed from recordActions() to actions()
+            ->actions([
                 Action::make('approve')
                     ->label('Approve')
                     ->icon('heroicon-o-check-circle')
