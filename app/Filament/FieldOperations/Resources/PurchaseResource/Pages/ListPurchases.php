@@ -17,4 +17,11 @@ class ListPurchases extends ListRecords
             CreateAction::make(),
         ];
     }
+
+    protected function getHeaderWidgets(): array
+    {
+        return [
+            PurchaseResource\Widgets\PurchaseOverview::class,
+        ];
+    }
 }

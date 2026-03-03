@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 
+// Redirect the root to your Field Operations panel
 Route::get('/', function () {
-    return view('welcome');
+    return redirect('/field-operations');
 });

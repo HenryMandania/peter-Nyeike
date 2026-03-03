@@ -27,7 +27,8 @@ class FieldOperationsPanelProvider extends PanelProvider
             ->id('field-operations')
             ->path('field-operations')
             ->brandName('PurchaseMaster')
-            ->login()
+            ->login()  
+            ->default()
             ->darkMode(true)
             ->colors([
                 'primary' => Color::Amber,

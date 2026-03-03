@@ -23,6 +23,7 @@ use Filament\Tables\Table;
 use Filament\Notifications\Notification;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Database\Eloquent\Builder;
+use App\Filament\FieldOperations\Resources\ShiftResource\RelationManagers;
 use Closure;
 
 class ShiftResource extends Resource
@@ -266,6 +267,15 @@ class ShiftResource extends Resource
                     }),
             ])
             ->defaultSort('opened_at', 'desc');
+    }
+
+    public static function getRelations(): array
+    {
+        return [
+            RelationManagers\PurchasesRelationManager::class,
+            RelationManagers\ExpensesRelationManager::class,
+            RelationManagers\FloatRequestsRelationManager::class,
+        ];
     }
 
     public static function getPages(): array

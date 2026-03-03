@@ -2,9 +2,8 @@
 
 namespace App\Filament\FieldOperations\Resources\FloatRequestResource\Pages;
 
-use Filament\Actions\CreateAction;
 use App\Filament\FieldOperations\Resources\FloatRequestResource;
-use Filament\Actions;
+use Filament\Actions\CreateAction;
 use Filament\Resources\Pages\ListRecords;
 
 class ListFloatRequests extends ListRecords
@@ -15,6 +14,13 @@ class ListFloatRequests extends ListRecords
     {
         return [
             CreateAction::make(),
+        ];
+    }
+     
+    protected function getHeaderWidgets(): array
+    {
+        return [
+            FloatRequestResource\Widgets\FloatRequestOverview::class,
         ];
     }
 }
