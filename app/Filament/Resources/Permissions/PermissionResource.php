@@ -2,14 +2,13 @@
 
 namespace App\Filament\Resources\Permissions;
 
-use App\Models\Permission; // Or Spatie\Permission\Models\Permission if preferred
+use Spatie\Permission\Models\Permission;
 use Filament\Forms;
-use Filament\Forms\Form; // Use this instead of Schema
+use Filament\Forms\Form;  
 use Filament\Forms\Components\Section;
 use Filament\Forms\Components\TextInput;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Actions\EditAction;
-use Filament\Tables\Actions\DeleteAction;
 use App\Filament\Resources\Permissions\PermissionResource\Pages;
 use Filament\Resources\Resource;
 use Filament\Tables;
@@ -45,12 +44,10 @@ class PermissionResource extends Resource
                 TextColumn::make('created_at')->dateTime()->sortable(),
             ])
             ->actions([
-                Tables\Actions\EditAction::make(),
-                Tables\Actions\DeleteAction::make(),
+                Tables\Actions\EditAction::make(),                 
             ])
             ->bulkActions([
-                Tables\Actions\BulkActionGroup::make([
-                    Tables\Actions\DeleteBulkAction::make(),
+                Tables\Actions\BulkActionGroup::make([                    
                 ]),
             ]);
     }

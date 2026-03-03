@@ -1,8 +1,7 @@
 <?php
 
 namespace App\Filament\Resources\Roles;
-
-use App\Models\Role; 
+use Spatie\Permission\Models\Role;
 use Filament\Forms;
 use Filament\Forms\Form; 
 use Filament\Forms\Components\Section;
@@ -17,10 +16,12 @@ use Filament\Tables;
 use Filament\Tables\Table;
 
 class RoleResource extends Resource
-{
+{    
     protected static ?string $model = Role::class;
     
     protected static ?string $navigationGroup = 'Users Group';
+    
+    protected static ?string $navigationIcon = 'heroicon-o-shield-check';
 
     public static function form(Form $form): Form 
     {
@@ -72,6 +73,7 @@ class RoleResource extends Resource
             ])
             ->bulkActions([
                 BulkActionGroup::make([                   
+                    Tables\Actions\DeleteBulkAction::make(),
                 ]),
             ]);
     }
