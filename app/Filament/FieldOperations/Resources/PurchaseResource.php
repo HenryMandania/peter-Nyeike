@@ -11,12 +11,13 @@ use Filament\Forms\Components\Section;
 use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
-use Filament\Forms\Get; // Correct v3 namespace
-use Filament\Forms\Set; // Correct v3 namespace
+use Filament\Forms\Get;
+use Filament\Forms\Set; 
 use Filament\Tables\Columns\TextColumn;
-use Filament\Tables\Actions\ViewAction; // Use Tables namespace for row actions
-use Filament\Tables\Actions\EditAction; // Use Tables namespace for row actions
-use Filament\Tables\Actions\Action;     // Use Tables namespace for row actions
+use Filament\Tables\Actions\ViewAction; 
+use Filament\Tables\Actions\EditAction; 
+use Filament\Tables\Actions\Action;   
+use pxlrbt\FilamentExcel\Actions\Tables\ExportAction;  
 use App\Filament\FieldOperations\Resources\PurchaseResource\Pages;
 use Filament\Resources\Resource;
 use Filament\Tables;
@@ -24,6 +25,9 @@ use Filament\Tables\Table;
 use Filament\Tables\Columns\Summarizers\Sum;
 use Illuminate\Support\Facades\Auth;
 use Closure;
+use Filament\Tables\Filters\SelectFilter;
+use Filament\Tables\Filters\Filter;
+use Filament\Forms\Components\DatePicker;
 
 class PurchaseResource extends Resource
 {
@@ -214,71 +218,136 @@ class PurchaseResource extends Resource
                 }),
         ])
         ->defaultSort('created_at', 'desc')
-        ->actions([
-            ViewAction::make()
-                ->visible(fn (Purchase $record) => 
-                    $record->approved_by !== null || 
-                    ($record->shift && $record->shift->status !== 'open')
-                ),
-
-            EditAction::make()
-                ->visible(fn (Purchase $record) => 
-                    $record->approved_by === null && 
-                    (!$record->shift || $record->shift->status === 'open')
-                ),
-
-            Tables\Actions\Action::make('approve')
-                ->label('Approve')
-                ->icon('heroicon-m-check-badge')
-                ->color('success')
-                ->requiresConfirmation()
-                ->visible(fn (Purchase $record) => 
-                    $record->approved_by === null && 
-                    (!$record->shift || $record->shift->status === 'open')
-                )
-                ->action(fn (Purchase $record) => $record->update([
-                    'approved_by' => auth()->id(),
-                    'status' => 'approved',
-                ])),
-
-                Tables\Actions\Action::make('sell')
-                ->label('Sell')
-                ->icon('heroicon-m-banknotes')
-                ->color('warning')
-                ->visible(fn (Purchase $record) => $record->approved_by !== null && !$record->is_sold)
+        ->filters([
+            // 1. Date Filter (Range)
+            Filter::make('created_at')
                 ->form([
-                    Forms\Components\TextInput::make('selling_unit_price')
-                        ->label('Selling Price per Unit')
-                        ->numeric()
-                        ->prefix('KES')
-                        ->required()
-                        // Add the validation logic here
-                        ->rules([
-                            fn (Purchase $record): Closure => function (string $attribute, $value, Closure $fail) use ($record) {
-                                $sellingPrice = floatval($value);
-                                $costPrice = floatval($record->unit_price);
-            
-                                if ($sellingPrice < $costPrice) {
-                                    $fail("Selling price (KES " . number_format($sellingPrice, 2) . ") cannot be lower than the cost price (KES " . number_format($costPrice, 2) . ").");
-                                }
-                            },
-                        ]),
+                    DatePicker::make('from')->label('Purchased From'),
+                    DatePicker::make('until')->label('Purchased Until'),
                 ])
-                ->action(function (Purchase $record, array $data): void {
-                    $totalSales = $record->quantity * floatval($data['selling_unit_price']);
-                    
-                    $record->update([
-                        'selling_unit_price' => $data['selling_unit_price'],
-                        'sales_amount' => $totalSales,
-                        // Profit is Revenue minus the Total Cost (including fees)
-                        'gross_profit' => $totalSales - $record->total_amount,
-                        'is_sold' => true,
-                        'sold_at' => now(),
-                        'sold_by' => auth()->id(),
-                    ]);
+                ->query(function ($query, array $data) {
+                    return $query
+                        ->when($data['from'], fn ($q) => $q->whereDate('created_at', '>=', $data['from']))
+                        ->when($data['until'], fn ($q) => $q->whereDate('created_at', '<=', $data['until']));
                 }),
+
+            // 2. Item Filter
+            SelectFilter::make('item_id')
+                ->label('Item')
+                ->relationship('item', 'name')
+                ->searchable()
+                ->preload(),
+
+            // 3. Supplier Filter
+            SelectFilter::make('vendor_id')
+                ->label('Supplier')
+                ->relationship('vendor', 'name')
+                ->searchable()
+                ->preload(),
+
+            // 4. Company Operator Filter
+            SelectFilter::make('created_by')
+                ->label('Operator')
+                ->relationship('operator', 'name') // Assumes relationship 'operator' exists in Purchase model
+                ->searchable()
+                ->preload(),
+
+            // 5. Status Filter
+            SelectFilter::make('status')
+                ->options([
+                    'pending' => 'Pending',
+                    'approved' => 'Approved',
+                    'rejected' => 'Rejected',
+                ]),
+        ])
+        ->headerActions([
+            // Top Right Export Button
+            \pxlrbt\FilamentExcel\Actions\Tables\ExportAction::make()
+                ->label('Export Excel')
+                ->icon('heroicon-m-arrow-down-tray')
+                ->color('success'),
+        ])        
+            ->actions([
+                Tables\Actions\ViewAction::make()
+                    ->visible(fn (Purchase $record) => 
+                        $record->status !== 'pending' || 
+                        ($record->shift && $record->shift->status !== 'open')
+                    ),
+            
+                Tables\Actions\EditAction::make()
+                    ->visible(fn (Purchase $record) => 
+                        $record->status === 'pending' && 
+                        (!$record->shift || $record->shift->status === 'open')
+                    ),
+            
+                Tables\Actions\Action::make('approve')
+                    ->label('Approve')
+                    ->icon('heroicon-m-check-badge')
+                    ->color('success')
+                    ->requiresConfirmation()
+                    ->visible(fn (Purchase $record) => 
+                        $record->status === 'pending' && 
+                        (!$record->shift || $record->shift->status === 'open')
+                    )
+                    ->action(fn (Purchase $record) => $record->update([
+                        'approved_by' => auth()->id(),
+                        'approved_at' => now(),
+                        'status' => 'approved',
+                    ])),
+                                        
+                Tables\Actions\Action::make('sell')
+                    ->label('Sell')
+                    ->icon('heroicon-m-banknotes')
+                    ->color('warning')
+                    ->visible(fn (Purchase $record) => $record->status === 'approved' && !$record->is_sold)
+                    ->form([
+                        Forms\Components\TextInput::make('selling_unit_price')
+                            ->label('Selling Price per Unit')
+                            ->numeric()
+                            ->prefix('KES')
+                            ->required()
+                            ->rules([
+                                fn (Purchase $record): Closure => function (string $attribute, $value, Closure $fail) use ($record) {
+                                    $sellingPrice = floatval($value);
+                                    $costPrice = floatval($record->unit_price);
+            
+                                    if ($sellingPrice < $costPrice) {
+                                        $fail("Selling price (KES " . number_format($sellingPrice, 2) . ") cannot be lower than the cost price (KES " . number_format($costPrice, 2) . ").");
+                                    }
+                                },
+                            ]),
+                    ])
+                    ->action(function (Purchase $record, array $data): void {
+                        $totalSales = $record->quantity * floatval($data['selling_unit_price']);
+                        
+                        $record->update([
+                            'selling_unit_price' => $data['selling_unit_price'],
+                            'sales_amount' => $totalSales,
+                            'gross_profit' => $totalSales - $record->total_amount,
+                            'is_sold' => true,
+                            'sold_at' => now(),
+                            'sold_by' => auth()->id(),
+                        ]);
+                    }),
+            ])
+        ->bulkActions([
+            Tables\Actions\BulkActionGroup::make([
+                
+                Tables\Actions\BulkAction::make('bulk_reject')
+                    ->label('Reject Selected')
+                    ->icon('heroicon-m-x-circle')
+                    ->color('danger')
+                    ->form([
+                        Forms\Components\Textarea::make('reason')->required(),
+                    ])
+                    ->action(fn ($records, array $data) => $records->each->update([
+                        'status' => 'rejected',
+                        'approved_by' => auth()->id(),
+                        'notes' => $data['reason'],
+                    ])),
+            ]),
         ]);
-}
+    }
    
     public static function canEdit(\Illuminate\Database\Eloquent\Model $record): bool
     {

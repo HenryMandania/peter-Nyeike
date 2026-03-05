@@ -2,6 +2,7 @@
 
 namespace App\Filament\FieldOperations\Resources;
 
+use pxlrbt\FilamentExcel\Actions\Tables\ExportAction;
 use App\Models\Shift;
 use App\Services\BalanceService;
 use Filament\Forms;
@@ -215,6 +216,14 @@ class ShiftResource extends Resource
                             ->when($data['from'], fn (Builder $query, $date) => $query->whereDate('opened_at', '>=', $date))
                             ->when($data['until'], fn (Builder $query, $date) => $query->whereDate('opened_at', '<=', $date));
                     }),
+            ])
+
+            ->headerActions([
+                ExportAction::make()
+                    ->label('Export to Excel')
+                    ->icon('heroicon-m-arrow-down-tray')
+                    ->color('success')
+                    ->name("Shifts-Report-" . now()->format('Y-m-d')),
             ])
             ->actions([
                 ViewAction::make(),

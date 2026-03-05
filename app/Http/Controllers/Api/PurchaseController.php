@@ -28,7 +28,7 @@ class PurchaseController extends Controller implements HasMiddleware
             // Permission-based restrictions
             new Middleware('permission:purchase.view', only: ['index']),
             new Middleware('permission:purchase.create', only: ['store']),
-            new Middleware('permission:purchase.approve', only: ['approve']),
+            new Middleware('permission:purchase.approve', only: ['approve','reject']),
         ];
     }
 
@@ -149,4 +149,42 @@ class PurchaseController extends Controller implements HasMiddleware
             'data' => $purchase->load(['vendor', 'item', 'shift'])
         ], 200);
     }
+
+    /**
+     * Reject a purchase
+     * Uses 'purchase.approve' permission as defined in middleware()
+     */
+    public function reject(Request $request, Purchase $purchase): JsonResponse
+    {
+        $user = Auth::user();
+
+        
+        $validated = $request->validate([
+            'reason' => 'required|string|max:255',
+        ]);
+
+         
+        if ($purchase->status !== 'pending') {
+            return response()->json([
+                'message' => "This purchase cannot be rejected. Current status: {$purchase->status}"
+            ], 422);
+        }
+
+        
+        $purchase->update([
+            'status'      => 'rejected',
+            'approved_by' => $user->id,  
+            'approved_at' => now(),
+            'notes'       => $validated['reason'],  
+        ]);
+
+        return response()->json([
+            'message' => 'Purchase rejected successfully.',
+            'data'    => $purchase->load(['vendor', 'item', 'shift'])
+        ], 200);
+    }
 }
+    
+
+ 
+

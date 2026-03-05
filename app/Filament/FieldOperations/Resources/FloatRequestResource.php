@@ -17,6 +17,7 @@ use Filament\Tables;
 use Filament\Tables\Table;
 use Illuminate\Support\Facades\Auth;
 use Closure;
+use pxlrbt\FilamentExcel\Actions\Tables\ExportAction;
 
 class FloatRequestResource extends Resource
 {
@@ -88,6 +89,14 @@ class FloatRequestResource extends Resource
                 TextColumn::make('created_at')
                     ->dateTime()
                     ->sortable(),
+            ])
+
+            ->headerActions([
+                ExportAction::make()
+                    ->label('Export Excel')
+                    ->icon('heroicon-m-arrow-down-tray')
+                    ->color('success')
+                    ->name("Float-Requests-" . date('Y-m-d')),
             ])
             ->actions([
                 Action::make('approve')

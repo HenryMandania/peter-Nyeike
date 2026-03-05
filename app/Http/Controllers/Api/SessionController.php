@@ -20,6 +20,7 @@ class SessionController extends Controller
     {
         $user = auth()->user();
 
+        // Finding the open shift regardless of company (Global One Shift Policy)
         $currentShift = Shift::where('user_id', $user->id)
             ->where('status', 'open')
             ->first();
@@ -43,7 +44,7 @@ class SessionController extends Controller
             // 2. Sum of Purchase amounts
             $totalPurchased = Purchase::where('shift_id', $currentShift->id)->sum('total_amount');
 
-            // 3. Sum of Transaction Fees (Using your correct column name)
+            // 3. Sum of Transaction Fees
             $totalTransactionFees = Purchase::where('shift_id', $currentShift->id)->sum('transaction_fee');
 
             // 4. Sum of Expenses
@@ -74,26 +75,34 @@ class SessionController extends Controller
     {
         $user = auth()->user();
 
+        // Validate that a company was selected
+        $request->validate([
+            'company_id' => 'required|exists:companies,id',
+        ]);
+
+        // Check for any open session globally for this user
         $existingSession = Shift::where('user_id', $user->id)
             ->where('status', 'open')
             ->first();
 
         if ($existingSession) {
-            return response()->json(['message' => 'You already have an open session.'], 400);
+            return response()->json(['message' => 'You already have an open session. Please close it first.'], 400);
         }
 
+        // Pull balance from the user's last closed shift (irrespective of company)
         $lastClosing = Shift::where('user_id', $user->id)
             ->where('status', 'closed')
             ->orderBy('closed_at', 'desc')
             ->value('closing_balance') ?? 0;
 
         $session = Shift::create([
-            'user_id' => $user->id,
+            'user_id'         => $user->id,
+            'company_id'      => $request->company_id,
             'opening_balance' => $lastClosing,
-            'system_balance' => $lastClosing,
-            'status' => 'open',
-            'opened_at' => now(),
-            'created_by' => $user->id,
+            'system_balance'  => $lastClosing,
+            'status'          => 'open',
+            'opened_at'       => now(),
+            'created_by'      => $user->id,
         ]);
 
         return response()->json($session);
@@ -101,6 +110,7 @@ class SessionController extends Controller
 
     /**
      * Close the active shift.
+     * Includes validation to prevent closing if cash is less than system balance.
      */
     public function close(Request $request, BalanceService $balanceService)
     {
@@ -120,13 +130,24 @@ class SessionController extends Controller
         ]);
 
         $systemBalance = $balanceService->calculate($shift);
+        $closingBalance = (float) $validated['closing_balance'];
+
+        // --- Shortage Validation ---
+        if ($closingBalance < $systemBalance) {
+            return response()->json([
+                'message' => 'Shift closure denied. The closing balance cannot be less than the system balance (Shortage detected).',
+                'system_balance' => $systemBalance,
+                'provided_balance' => $closingBalance,
+                'difference' => $systemBalance - $closingBalance
+            ], 422);
+        }
 
         $shift->update([
             'status'          => 'closed',
             'closed_at'       => now(),
             'system_balance'  => $systemBalance,
-            'closing_balance' => $validated['closing_balance'],
-            'cash_difference' => $validated['closing_balance'] - $systemBalance,
+            'closing_balance' => $closingBalance,
+            'cash_difference' => $closingBalance - $systemBalance,
             'closing_notes'   => $validated['closing_notes'],
         ]);
 
