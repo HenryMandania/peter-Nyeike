@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\DB;
 
 class VendorPurchaseChart extends ChartWidget
 {
-    protected static ?int $sort = 2;
+    protected static ?int $sort = 4;
     protected static ?string $heading = 'Vendor Volume Distribution';
     protected int | string | array $columnSpan = 'md';
 

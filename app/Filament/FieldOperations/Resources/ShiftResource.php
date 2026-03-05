@@ -6,6 +6,10 @@ use App\Models\Shift;
 use App\Services\BalanceService;
 use Filament\Forms;
 use Filament\Forms\Form;
+use App\Models\Company;
+use Filament\Forms\Components\Select;
+use Filament\Forms\Get;
+use Filament\Forms\Set;
 use Filament\Forms\Components\Section;
 use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Components\TextInput;
@@ -35,80 +39,82 @@ class ShiftResource extends Resource
     protected static ?int $navigationSort = 1;
 
     public static function form(Form $form): Form
-    {
-        return $form
-            ->schema([
-                Section::make('Shift Information')
-                    ->description('Overview of the selected shift session.')
-                    ->schema([
-                        Placeholder::make('operator_name')
-                            ->label('Operator')
-                            ->content(fn ($record) => $record?->user?->name ?? Auth::user()->name),
+{
+    return $form
+        ->schema([
+            Section::make('Shift Information')
+                ->description('Overview of the selected shift session.')
+                ->schema([
+                   
+                    Placeholder::make('operator_name')
+                        ->label('Operator')
+                        ->content(fn ($record) => $record?->user?->name ?? Auth::user()->name),
 
-                        Placeholder::make('status_display')
-                            ->label('Current Status')
-                            ->content(fn ($record) => strtoupper($record?->status ?? 'NEW')),
+                    Placeholder::make('status_display')
+                        ->label('Current Status')
+                        ->content(fn ($record) => strtoupper($record?->status ?? 'NEW')),
 
-                        TextInput::make('opening_balance')
-                            ->label('Opening Cash Balance')
-                            ->numeric()
-                            ->prefix('KES')
-                            ->required()
-                            ->default(function () {
-                                $lastShift = Shift::where('user_id', Auth::id())
-                                    ->where('status', 'closed')
-                                    ->orderBy('closed_at', 'desc')
-                                    ->first();
-                                return $lastShift ? $lastShift->closing_balance : 0;
-                            })
-                            ->readOnly()
-                            ->helperText('Automatically fetched from your last closed shift.')
-                            ->rules([
-                                fn (): Closure => function (string $attribute, $value, Closure $fail) {
-                                    $activeShiftExists = Shift::where('user_id', Auth::id())
-                                        ->where('status', 'open')
-                                        ->exists();
-                        
-                                    if ($activeShiftExists && !request()->route('record')) {
-                                        $fail("You still have an active shift. Please close it before starting a new one.");
-                                    }
-                                },
-                            ]),
+                  
+                    TextInput::make('opening_balance')
+                    ->label('Opening Cash Balance')
+                    ->numeric()
+                    ->prefix('KES')
+                    ->required()
+                    ->default(function () {
+                        $lastShift = Shift::where('user_id', Auth::id())
+                            ->where('status', 'closed')
+                            ->orderBy('closed_at', 'desc')
+                            ->first();
+                
+                         
+                        return $lastShift ? (float) $lastShift->closing_balance : 0;
+                    })
+                    ->readOnly()
+                    ->helperText('Automatically fetched from your last closed shift.'),
 
-                        TextInput::make('system_balance')
-                            ->label('System Calculated Balance')
-                            ->numeric()
-                            ->prefix('KES')
-                            ->readOnly(),
+                    
+                    Select::make('company_id')
+                        ->label('Company')
+                        ->relationship('company', 'name')
+                        ->searchable()
+                        ->preload()
+                        ->required()
+                        ->native(false)
+                        ->live(),
 
-                        TextInput::make('closing_balance')
-                            ->label('Closing Balance')
-                            ->numeric()
-                            ->prefix('KES')
-                            ->formatStateUsing(function ($record) {
-                                if ($record && $record->status === 'open') {
-                                    return 0;
-                                }
-                                return $record?->closing_balance ?? 0;
-                            })
-                            ->readOnly(),
+                   
+                    TextInput::make('system_balance')
+                        ->label('System Calculated Balance')
+                        ->numeric()
+                        ->prefix('KES')
+                        ->readOnly(),
 
-                        Placeholder::make('times')
-                            ->label('Duration')
-                            ->content(function ($record) {
-                                if (!$record) return 'Starts on Create';
-                                $start = $record->opened_at?->format('H:i');
-                                $end = $record->closed_at?->format('H:i') ?? 'Active';
-                                return "{$start} - {$end}";
-                            }),
-                    ])->columns(2),
-            ]);
-    }
+                    TextInput::make('closing_balance')
+                        ->label('Closing Balance')
+                        ->numeric()
+                        ->prefix('KES')
+                        ->readOnly(),
 
+                 
+                    Placeholder::make('times')
+                        ->label('Duration')
+                        ->content(function ($record) {
+                            if (!$record) return 'Starts on Create';
+                            $start = $record->opened_at?->format('H:i') ?? 'N/A';
+                            $end = $record->closed_at?->format('H:i') ?? 'Active';
+                            return "{$start} - {$end}";
+                        }),
+                ])->columns(2),  
+        ]);
+}
     public static function table(Table $table): Table
     {
         return $table
             ->columns([
+                TextColumn::make('company.name')
+                    ->label('Company')
+                    ->sortable()
+                    ->searchable(),
                 TextColumn::make('user.name')
                     ->label('Operator')
                     ->sortable()
@@ -181,6 +187,12 @@ class ShiftResource extends Resource
                     ->sortable(),
             ])
             ->filters([
+                SelectFilter::make('company_id')
+                    ->label('Filter by Company')
+                    ->relationship('company', 'name')  
+                    ->searchable()
+                    ->preload()
+                    ->indicator('Company'),
                 SelectFilter::make('user_id')
                     ->label('Operator')
                     ->relationship('user', 'name')
@@ -194,7 +206,7 @@ class ShiftResource extends Resource
                     ]),
 
                 Filter::make('opened_at')
-                    ->form([ // <--- FIXED: Changed from schema() to form()
+                    ->form([  
                         DatePicker::make('from')->label('From Date'),
                         DatePicker::make('until')->label('To Date'),
                     ])
@@ -243,7 +255,7 @@ class ShiftResource extends Resource
                             ->autofocus(),
                     ])
                     ->action(function (Shift $record, array $data, BalanceService $service): void {
-                        // 1. Loophole Fix: Check for Pending Float Requests
+                         
                         $hasPendingFloats = $record->floatRequests()
                             ->where('status', 'pending')
                             ->exists();
@@ -259,12 +271,12 @@ class ShiftResource extends Resource
                             return;
                         }
             
-                        // 2. Re-calculate balance inside action to prevent stale data
+                    
                         $expected = (float) $service->calculate($record);
                         $actual = (float) $data['closing_balance'];
                         $variance = $actual - $expected;
             
-                        // 3. Informative Balance Verification
+                      
                         if ($variance < 0) {
                             Notification::make()
                                 ->title('Reconciliation Needed')
@@ -276,7 +288,7 @@ class ShiftResource extends Resource
                             return;
                         }
             
-                        // 4. Atomic Update
+                        
                         \DB::transaction(function () use ($record, $expected, $actual, $variance) {
                             $record->update([
                                 'system_balance'  => $expected,

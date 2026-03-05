@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\DB;
 class ItemPurchaseChart extends ChartWidget
 {
 
-    protected static ?int $sort = 3;
+    protected static ?int $sort = 5;
     protected static ?string $heading = 'Spending by Item / Product';
     protected static ?string $maxHeight = '300px';
     protected int | string | array $columnSpan = 'md';

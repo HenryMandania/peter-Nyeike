@@ -8,7 +8,9 @@ use Filament\Forms\Form;
 use Filament\Forms\Components\TextInput;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Actions\EditAction; 
+use Filament\Tables\Actions\ViewAction;
 use Filament\Tables\Actions\BulkActionGroup;
+use Filament\Tables\Actions\DeleteBulkAction;
 use App\Filament\FieldOperations\Resources\ExpenseCategoryResource\Pages;
 use Filament\Resources\Resource;
 use Filament\Tables;
@@ -32,10 +34,9 @@ class ExpenseCategoryResource extends Resource
             ->schema([  
                 TextInput::make('name')
                     ->required()
+                    ->unique(ignoreRecord: true)
                     ->maxLength(255),
-                TextInput::make('created_by')
-                    ->required()
-                    ->numeric(),
+                // created_by is handled automatically in the CreatePage mutation
             ]);
     }
 
@@ -44,7 +45,12 @@ class ExpenseCategoryResource extends Resource
         return $table
             ->columns([
                 TextColumn::make('name')
-                    ->searchable(),
+                    ->searchable()
+                    ->sortable(),
+                // Display the creator's name via the relationship
+                TextColumn::make('creator.name')
+                    ->label('Created By')
+                    ->sortable(),
                 TextColumn::make('updated_at')
                     ->dateTime()
                     ->sortable()
@@ -53,11 +59,13 @@ class ExpenseCategoryResource extends Resource
             ->filters([
                 //
             ])
-            ->actions([  
+            ->actions([   
+                ViewAction::make(),
                 EditAction::make(),
             ])
-            ->bulkActions([  
-                BulkActionGroup::make([    
+            ->bulkActions([   
+                BulkActionGroup::make([     
+                    DeleteBulkAction::make(),
                 ]),
             ]);
     }
@@ -74,6 +82,7 @@ class ExpenseCategoryResource extends Resource
         return [
             'index' => Pages\ListExpenseCategories::route('/'),
             'create' => Pages\CreateExpenseCategory::route('/create'),
+            'view' => Pages\ViewExpenseCategory::route('/{record}'),
             'edit' => Pages\EditExpenseCategory::route('/{record}/edit'),
         ];
     }

@@ -15,6 +15,9 @@ class ExpenseCategory extends Model
         'created_by',
     ];
 
+    /**
+     * Get the user who created the expense category.
+     */
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');

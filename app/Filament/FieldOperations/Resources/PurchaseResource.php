@@ -125,76 +125,160 @@ class PurchaseResource extends Resource
     }
 
     public static function table(Table $table): Table
-    {
-        return $table
-            ->columns([
-                TextColumn::make('created_at')
-                    ->label('Date & Time')
-                    ->dateTime('d M Y, H:i')
-                    ->sortable(),
+{
+    return $table
+        ->columns([
+            TextColumn::make('operator.name')
+                ->label('Operator')
+                ->toggleable(),
+            // Date & Time
+            TextColumn::make('created_at')
+                ->label('Date & Time')
+                ->dateTime('d M Y, H:i')
+                ->sortable(),
 
-                TextColumn::make('vendor.name')->label('Supplier')->sortable(),
-                TextColumn::make('item.name')->label('Item'),
-                
-                TextColumn::make('quantity')
-                    ->label('Weight/Qty')
-                    ->numeric(2)
-                    ->summarize(Sum::make()->label('Total Weight')),
+            // Supplier & Item
+            TextColumn::make('vendor.name')
+                ->label('Supplier')
+                ->sortable()
+                ->searchable(),
 
-                TextColumn::make('unit_price')->label('Unit Price')->money('KES'),
-                
-                TextColumn::make('transaction_fee')
-                    ->label('Transaction Fee')
-                    ->money('KES')
-                    ->summarize(Sum::make()->label('Total Fees')),
-                
-                TextColumn::make('total_amount')
-                    ->label('Total Amount')
-                    ->money('KES')
-                    ->weight('bold')
-                    ->summarize(Sum::make()->label('Grand Total')),
-                
-                TextColumn::make('operator.name')->label('Operator'),
+            TextColumn::make('item.name')
+                ->label('Item')
+                ->searchable(),
 
-                TextColumn::make('approver.name')
-                    ->label('Approved By')
-                    ->icon(fn ($record) => $record->approved_by ? 'heroicon-m-check-circle' : null)
-                    ->iconColor('success')
-                    ->color(fn ($record) => $record->approved_by ? 'success' : 'gray')
-                    ->placeholder('Waiting...'),
-            ])
-            ->defaultSort('created_at', 'desc')
-            ->actions([
-                
-                ViewAction::make()
-                    ->visible(fn (Purchase $record) => 
-                        $record->approved_by !== null || 
-                        ($record->shift && $record->shift->status !== 'open')
-                    ),
+            // Weight/Qty
+            TextColumn::make('quantity')
+                ->label('Weight/Qty')
+                ->numeric(2)
+                ->summarize(Sum::make()->label('Total Weight')),
 
-                
-                EditAction::make()
-                    ->visible(fn (Purchase $record) => 
-                        $record->approved_by === null && 
-                        (!$record->shift || $record->shift->status === 'open')
-                    ),
+            // --- BUYING SIDE (COST) ---
+            TextColumn::make('unit_price')
+                ->label('Unit Cost')
+                ->money('KES')
+                ->color('gray'),
 
-                
-                Tables\Actions\Action::make('approve')
-                    ->label('Approve')
-                    ->icon('heroicon-m-check-badge')
-                    ->color('success')
-                    ->requiresConfirmation()
-                    ->visible(fn (Purchase $record) => 
-                        $record->approved_by === null && 
-                        (!$record->shift || $record->shift->status === 'open')
-                    )
-                    ->action(fn (Purchase $record) => $record->update([
-                        'approved_by' => Auth::id(),
-                    ])),
-            ]);
-    }
+            TextColumn::make('transaction_fee')
+                ->label('Trans. Fee')
+                ->money('KES')
+                ->summarize(Sum::make()->label('Total Fees')),
 
+            TextColumn::make('total_amount')
+                ->label('Total Cost')
+                ->money('KES')
+                ->color('info')
+                ->weight('bold')
+                ->summarize(Sum::make()->label('Grand Cost')),
+
+            TextColumn::make('approver.name')
+                ->label('Approved By')
+                ->icon(fn ($record) => $record->approved_by ? 'heroicon-m-check-circle' : null)
+                ->iconColor('success')
+                ->color(fn ($record) => $record->approved_by ? 'success' : 'gray')
+                ->placeholder('Waiting...'),
+
+            // --- SELLING SIDE (PRICE & PROFIT) ---
+            TextColumn::make('selling_unit_price')
+                ->label('Selling Price')
+                ->money('KES')
+                ->placeholder('—')
+                ->color('#6366f1'),
+
+            TextColumn::make('sales_amount')
+                ->label('Sales Value')
+                ->money('KES')
+                ->color('success')
+                ->weight('bold')
+                ->placeholder('Pending Sale')
+                ->summarize(Sum::make()->label('Total Revenue')),
+
+            TextColumn::make('gross_profit')
+                ->label('Profit/Loss')
+                ->money('KES')
+                ->weight('bold')
+                ->color(fn ($state) => $state >= 0 ? 'success' : 'danger')
+                ->summarize(Sum::make()->label('Net Profit')),
+
+            TextColumn::make('seller.name')
+                ->label('Sold By')                
+                ->placeholder('—'),
+
+            TextColumn::make('status')
+                ->badge()
+                ->color(fn (string $state): string => match ($state) {
+                    'pending' => 'gray',
+                    'approved' => 'success',
+                    'rejected' => 'danger',
+                    default => 'gray',
+                }),
+        ])
+        ->defaultSort('created_at', 'desc')
+        ->actions([
+            ViewAction::make()
+                ->visible(fn (Purchase $record) => 
+                    $record->approved_by !== null || 
+                    ($record->shift && $record->shift->status !== 'open')
+                ),
+
+            EditAction::make()
+                ->visible(fn (Purchase $record) => 
+                    $record->approved_by === null && 
+                    (!$record->shift || $record->shift->status === 'open')
+                ),
+
+            Tables\Actions\Action::make('approve')
+                ->label('Approve')
+                ->icon('heroicon-m-check-badge')
+                ->color('success')
+                ->requiresConfirmation()
+                ->visible(fn (Purchase $record) => 
+                    $record->approved_by === null && 
+                    (!$record->shift || $record->shift->status === 'open')
+                )
+                ->action(fn (Purchase $record) => $record->update([
+                    'approved_by' => auth()->id(),
+                    'status' => 'approved',
+                ])),
+
+                Tables\Actions\Action::make('sell')
+                ->label('Sell')
+                ->icon('heroicon-m-banknotes')
+                ->color('warning')
+                ->visible(fn (Purchase $record) => $record->approved_by !== null && !$record->is_sold)
+                ->form([
+                    Forms\Components\TextInput::make('selling_unit_price')
+                        ->label('Selling Price per Unit')
+                        ->numeric()
+                        ->prefix('KES')
+                        ->required()
+                        // Add the validation logic here
+                        ->rules([
+                            fn (Purchase $record): Closure => function (string $attribute, $value, Closure $fail) use ($record) {
+                                $sellingPrice = floatval($value);
+                                $costPrice = floatval($record->unit_price);
+            
+                                if ($sellingPrice < $costPrice) {
+                                    $fail("Selling price (KES " . number_format($sellingPrice, 2) . ") cannot be lower than the cost price (KES " . number_format($costPrice, 2) . ").");
+                                }
+                            },
+                        ]),
+                ])
+                ->action(function (Purchase $record, array $data): void {
+                    $totalSales = $record->quantity * floatval($data['selling_unit_price']);
+                    
+                    $record->update([
+                        'selling_unit_price' => $data['selling_unit_price'],
+                        'sales_amount' => $totalSales,
+                        // Profit is Revenue minus the Total Cost (including fees)
+                        'gross_profit' => $totalSales - $record->total_amount,
+                        'is_sold' => true,
+                        'sold_at' => now(),
+                        'sold_by' => auth()->id(),
+                    ]);
+                }),
+        ]);
+}
    
     public static function canEdit(\Illuminate\Database\Eloquent\Model $record): bool
     {

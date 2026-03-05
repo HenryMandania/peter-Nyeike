@@ -12,6 +12,7 @@ class Purchase extends Model
 {
     protected $fillable = [
         'shift_id',
+        'company_id',
         'vendor_id',
         'item_id',
         'quantity',
@@ -25,6 +26,12 @@ class Purchase extends Model
         'status',
         'notes',
         'reference_no',
+        'selling_unit_price',
+        'sales_amount',
+        'gross_profit',
+        'is_sold',
+        'sold_at',
+        'sold_by',
     ];
 
     // Default attributes for new records
@@ -64,6 +71,7 @@ class Purchase extends Model
 
             $purchase->shift_id     = $activeShift->id;
             $purchase->created_by   = Auth::id();
+            $purchase->company_id   = $activeShift->company_id;
             $purchase->total_amount = $transactionCost;
             $purchase->status       = $purchase->status ?? 'pending';
         });
@@ -99,5 +107,20 @@ class Purchase extends Model
     public function shift(): BelongsTo
     {
         return $this->belongsTo(Shift::class);
+    }
+    public function seller(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'sold_by');
+    }
+    
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::creating(function ($purchase) {
+            if ($purchase->shift_id && !$purchase->company_id) {
+                $purchase->company_id = $purchase->shift->company_id;
+            }
+        });
     }
 }

@@ -2,6 +2,9 @@
 
 namespace App\Providers\Filament;
 
+use App\Filament\FieldOperations\Widgets\SalesOverview;
+use App\Filament\FieldOperations\Widgets\CompanyPerformanceChart;
+use App\Filament\FieldOperations\Widgets\SalesStatusChart;
 use Filament\Pages\Dashboard;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
@@ -54,8 +57,12 @@ class FieldOperationsPanelProvider extends PanelProvider
                 in: app_path('Filament/FieldOperations/Widgets'), 
                 for: 'App\\Filament\\FieldOperations\\Widgets'
             )
+            ->widgets([
+                SalesOverview::class,
+                CompanyPerformanceChart::class,
+                SalesStatusChart::class,
+            ])
             ->navigationGroups([
-                // ✅ Icons removed from groups to prevent conflicts with Resource icons
                 NavigationGroup::make()->label('Shifts'),
                 NavigationGroup::make()->label('Administration'),
                 NavigationGroup::make()->label('Accounts'),

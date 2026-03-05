@@ -11,90 +11,113 @@ use Illuminate\Support\Facades\Auth;
 
 class FloatRequestController extends Controller
 {
-    // ... index() remains fine ...
-
-    public function store(Request $request)
+   
+    public function pending()
     {
         $user = Auth::user();
 
-        $validated = $request->validate([
-            'amount' => 'required|numeric|min:1',
-        ]);
-
-        // Loophole Fix: Check if there is already a PENDING request 
-        // to prevent "spamming" the supervisor.
-        $hasPending = FloatRequest::where('user_id', $user->id)
+        // Fetch pending float requests
+        $pendingRequests = FloatRequest::with(['user', 'shift'])
             ->where('status', 'pending')
-            ->exists();
-
-        if ($hasPending) {
-            return response()->json(['message' => 'You already have a pending float request.'], 422);
-        }
-
-        $activeShift = Shift::where('user_id', $user->id)
-            ->where('status', 'open')
-            ->first();
-
-        if (!$activeShift) {
-            return response()->json(['message' => 'No active shift found.'], 403);
-        }
-
-        $floatRequest = FloatRequest::create([
-            'user_id' => $user->id,
-            'shift_id' => $activeShift->id,
-            'amount' => $validated['amount'],
-            'status' => 'pending',
-        ]);
+            ->orderBy('created_at', 'desc')
+            ->get();
 
         return response()->json([
-            'message' => 'Float request submitted successfully.',
-            'data' => $floatRequest
-        ], 201);
+            'message' => 'Pending float requests fetched successfully.',
+            'data' => $pendingRequests
+        ], 200);
     }
 
+    /**
+     * Approve a float request.
+     * Middleware 'permission:float-request.approve' should handle authorization.
+     */
     public function approve(FloatRequest $floatRequest)
     {
-        // Loophole Fix 1: Prevent Self-Approval
-        if ($floatRequest->user_id === Auth::id()) {
-            return response()->json(['message' => 'You cannot approve your own float request.'], 403);
+        $user = Auth::user();
+
+        // Prevent self approval
+        if ($floatRequest->user_id === $user->id) {
+            return response()->json([
+                'message' => 'You cannot approve your own float request.'
+            ], 403);
         }
 
-        // Loophole Fix 2: Check status
-        if ($floatRequest->status !== 'pending') {
-            return response()->json(['message' => 'This request has already been processed.'], 422);
-        }
+        return DB::transaction(function () use ($floatRequest, $user) {
 
-        // Loophole Fix 3: Ensure the shift is still OPEN
-        // If the shift is closed, approving this float will create a balance mismatch.
-        if ($floatRequest->shift->status !== 'open') {
-            return response()->json(['message' => 'The shift associated with this request is already closed.'], 422);
-        }
+            // Lock row to prevent double approval
+            $floatRequest = FloatRequest::where('id', $floatRequest->id)
+                ->lockForUpdate()
+                ->first();
 
-        return DB::transaction(function () use ($floatRequest) {
+            if (!$floatRequest) {
+                return response()->json([
+                    'message' => 'Float request not found.'
+                ], 404);
+            }
+
+            if ($floatRequest->status !== 'pending') {
+                return response()->json([
+                    'message' => 'This request has already been processed.'
+                ], 422);
+            }
+
+            // Validate shift exists and is open
+            $shift = Shift::where('id', $floatRequest->shift_id)
+                ->lockForUpdate()
+                ->first();
+
+            if (!$shift) {
+                return response()->json([
+                    'message' => 'Associated shift not found.'
+                ], 422);
+            }
+
+            if ($shift->status !== 'open') {
+                return response()->json([
+                    'message' => 'The associated shift is already closed.'
+                ], 422);
+            }
+
+            // Update shift balance
+            $shift->increment('float_balance', $floatRequest->amount);
+
+            // Approve request
             $floatRequest->update([
                 'status' => 'approved',
-                'approved_by' => Auth::id(),
+                'approved_by' => $user->id,
+                'approved_at' => now(),
             ]);
 
             return response()->json([
                 'message' => 'Float request approved successfully.',
-                'data' => $floatRequest->load('approver')
-            ]);
+                'data' => $floatRequest->load(['user', 'approver', 'shift'])
+            ], 200);
         });
     }
 
+    /**
+     * Reject a float request.
+     * Middleware 'permission:float-request.reject' should handle authorization.
+     */
     public function reject(FloatRequest $floatRequest)
     {
-        // Loophole Fix: Standard status check
+        $user = Auth::user();
+
         if ($floatRequest->status !== 'pending') {
-            return response()->json(['message' => 'This request has already been processed.'], 422);
+            return response()->json([
+                'message' => 'This request has already been processed.'
+            ], 422);
         }
 
         $floatRequest->update([
             'status' => 'rejected',
-            'approved_by' => Auth::id(),
+            'approved_by' => $user->id,
+            'approved_at' => now(),
         ]);
 
-        return response()->json(['message' => 'Float request rejected.']);
+        return response()->json([
+            'message' => 'Float request rejected successfully.'
+        ], 200);
     }
 }

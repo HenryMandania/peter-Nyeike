@@ -26,17 +26,22 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/suppliers', [SupplierController::class, 'store']);
     Route::put('/suppliers/{supplier}', [SupplierController::class, 'update']);
 
-    Route::get('/purchases', [PurchaseController::class, 'index']);
-    Route::post('/purchases', [PurchaseController::class, 'store']);
+  
+    Route::middleware(['auth:sanctum'])->group(function () {    
+    Route::get('/purchases', [PurchaseController::class, 'index'])->middleware('permission:purchase.view');
+    Route::post('/purchases', [PurchaseController::class, 'store'])->middleware('permission:purchase.create');
+    Route::post('/purchases/{purchase}/approve', [PurchaseController::class, 'approve'])->middleware('permission:purchase.approve');});
 
     Route::get('/items', [ItemController::class, 'index']);
        
     Route::get('/float-requests', [FloatRequestController::class, 'index']);
     Route::post('/float-requests', [FloatRequestController::class, 'store']);
     
-    Route::get('/float-requests/pending', [FloatRequestController::class, 'pending']);
-    Route::post('/float-requests/{floatRequest}/approve', [FloatRequestController::class, 'approve']);
-    Route::post('/float-requests/{floatRequest}/reject', [FloatRequestController::class, 'reject']);
+    Route::middleware(['auth:sanctum'])->group(function () {         
+    Route::get('/float-requests/pending', [FloatRequestController::class, 'pending'])->middleware('permission:float-request.view');
+    Route::post('/float-requests/{floatRequest}/approve', [FloatRequestController::class, 'approve'])->middleware('permission:float-request.approve');
+    Route::post('/float-requests/{floatRequest}/reject', [FloatRequestController::class, 'reject'])->middleware('permission:float-request.reject');
+    Route::get('/float-requests/pending', [FloatRequestController::class, 'pending'])->middleware('permission:float-request.view');});
 
     Route::post('/expenses', [ExpenseController::class, 'store']);
     Route::get('/expenses', [ExpenseController::class, 'index']);

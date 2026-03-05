@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\DB;
 class ExpenseTypeChart extends ChartWidget
 {
 
-    protected static ?int $sort = 2;
+    protected static ?int $sort = 4;
     protected static ?string $heading = 'Expense Distribution by Category';
     
     

@@ -14,12 +14,16 @@ return new class extends Migration
     {
         Schema::create('shifts', function (Blueprint $table) {
             $table->id();
+
+            $table->foreignId('company_id')->constrained()->cascadeOnDelete();
             $table->decimal('opening_balance', 15, 2);
             $table->decimal('closing_balance', 15, 2)->nullable();
             $table->decimal('system_balance', 15, 2)->default(0);
             
             // Using string instead of enum to better support the functional index logic in some SQL versions
             $table->string('status')->default('open'); 
+
+            
             
             $table->timestamp('opened_at')->useCurrent();
             $table->timestamp('closed_at')->nullable();

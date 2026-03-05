@@ -16,6 +16,7 @@ class Shift extends Model
         'opening_balance',
         'closing_balance',
         'system_balance',
+        'company_id',
         'status',
         'opened_at',
         'closed_at',
@@ -66,6 +67,10 @@ class Shift extends Model
         return $this->hasMany(Expense::class);
     }
     
+    public function company(): BelongsTo
+    {
+        return $this->belongsTo(Company::class);
+    }
 
     public function user(): BelongsTo { return $this->belongsTo(User::class, 'user_id'); }
     public function creator(): BelongsTo { return $this->belongsTo(User::class, 'created_by'); }

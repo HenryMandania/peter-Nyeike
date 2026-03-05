@@ -8,6 +8,7 @@ use Filament\Forms\Form;
 use Filament\Forms\Components\TextInput;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Actions\EditAction;  
+use Filament\Tables\Actions\ViewAction;
 use Filament\Tables\Actions\BulkActionGroup;  
 use App\Filament\FieldOperations\Resources\ItemResource\Pages; 
 use App\Filament\FieldOperations\Resources\ItemResource\RelationManagers\ItemRelationManager; 
@@ -63,6 +64,7 @@ class ItemResource extends Resource
                 //
             ])
             ->actions([ 
+                Tables\Actions\ViewAction::make(),
                 EditAction::make(),
             ])
             ->bulkActions([ 
@@ -83,7 +85,7 @@ class ItemResource extends Resource
         return [
             'index' => Pages\ListItems::route('/'),
             'create' => Pages\CreateItem::route('/create'),
-            'view' => Pages\ViewItem::route('/view'),
+            'view' => Pages\ViewItem::route('/{record}'),
             'edit' => Pages\EditItem::route('/{record}/edit'),
         ];
     }
