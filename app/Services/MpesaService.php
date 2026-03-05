@@ -19,13 +19,19 @@ class MpesaService
         $this->config = MpesaConfig::where('is_active', true)->first();
         
         if ($this->config) {
-            // This package expects these specific config keys
+            $env = strtolower($this->config->env); 
+    
+            // Inject EVERYTHING from the database into the environment memory
+            putenv("MPESA_ENV={$env}");
+            putenv("MPESA_CONSUMER_KEY={$this->config->consumer_key}");
+            putenv("MPESA_CONSUMER_SECRET={$this->config->consumer_secret}");
+            putenv("MPESA_PASSKEY={$this->config->passkey}");
+            putenv("MPESA_SHORTCODE={$this->config->shortcode}");
+            
+            // Also keep the Laravel config for your own use
             config([
-                'mpesa.env'             => $this->config->env, // 'sandbox' or 'live'
-                'mpesa.consumer_key'    => $this->config->consumer_key,
-                'mpesa.consumer_secret' => $this->config->consumer_secret,
-                'mpesa.passkey'         => $this->config->passkey,
-                'mpesa.shortcode'       => $this->config->shortcode,
+                'mpesa.env' => $env,
+                'mpesa.shortcode' => $this->config->shortcode,
             ]);
         }
     }
@@ -61,14 +67,13 @@ class MpesaService
     public function initiateStkPush($model, $phoneNumber, $accountRef, $description, $amount, $type)
     {
         try {
-            // This package requires the STK push to be called through the 'STK' method 
-            // which returns an instance of the LNM (Lipa Na Mpesa) class.
             $mpesa = new \Safaricom\Mpesa\Mpesa();
             
             $callbackUrl = $this->config->callback_url ?: config('app.url') . '/api/mpesa/callback';
             
-            // In safaricom/mpesa, STK pushes use the STK() method
-            $response = $mpesa->STKPush(
+            // This version of the package uses STKPushSimulation
+            // Parameters: $BusinessShortCode, $LipaNaMpesaPasskey, $TransactionType, $Amount, $PartyA, $PartyB, $PhoneNumber, $CallBackURL, $AccountReference, $TransactionDesc, $Remark
+            $response = $mpesa->STKPushSimulation(
                 $this->config->shortcode,     // BusinessShortCode
                 $this->config->passkey,       // LipaNaMpesaPasskey
                 'CustomerPayBillOnline',      // TransactionType
@@ -78,10 +83,11 @@ class MpesaService
                 $phoneNumber,                 // PhoneNumber
                 $callbackUrl,                 // CallBackURL
                 $accountRef,                  // AccountReference
-                $description                  // TransactionDesc
+                $description,                 // TransactionDesc
+                'Payment'                     // Remark (Required by this package)
             );
 
-            // Handle the JSON response
+            // This package returns a JSON string, so we decode it
             $resData = json_decode($response, true);
             $checkoutId = $resData['CheckoutRequestID'] ?? null;
 
@@ -101,15 +107,15 @@ class MpesaService
                     'mpesa_phone'       => $phoneNumber,
                 ]);
 
-                return ['status' => true, 'message' => 'STK Push sent!'];
+                return ['status' => true, 'message' => 'STK Push sent to ' . $phoneNumber];
             }
 
-            Log::error("M-Pesa API Response: " . $response);
-            return ['status' => false, 'message' => $resData['errorMessage'] ?? 'STK Push Failed.'];
+            Log::error("M-Pesa API Error: " . $response);
+            return ['status' => false, 'message' => $resData['errorMessage'] ?? 'Safaricom Error. Check Logs.'];
 
         } catch (\Exception $e) {
             Log::error("M-Pesa Exception: " . $e->getMessage());
-            return ['status' => false, 'message' => $e->getMessage()];
+            return ['status' => false, 'message' => "M-Pesa Service Error."];
         }
     }
 
