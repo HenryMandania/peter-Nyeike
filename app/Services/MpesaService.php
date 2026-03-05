@@ -7,7 +7,7 @@ use App\Models\MpesaTransaction;
 use App\Models\Purchase;
 use App\Models\FloatRequest;
 use App\Models\Expense;
-use Safaricom\Mpesa\Mpesa; // Correct class for this package
+use Safaricom\Mpesa\Mpesa;  
 use Illuminate\Support\Facades\Log;
 
 class MpesaService

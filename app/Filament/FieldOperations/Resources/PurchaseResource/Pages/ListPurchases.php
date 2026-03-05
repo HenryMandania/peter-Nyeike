@@ -11,6 +11,12 @@ class ListPurchases extends ListRecords
 {
     protected static string $resource = PurchaseResource::class;
 
+    // Add this method to refresh the table every 5 seconds
+    protected function getDefaultTablePollingInterval(): ?string
+    {
+        return '5s';
+    }
+
     protected function getHeaderActions(): array
     {
         return [

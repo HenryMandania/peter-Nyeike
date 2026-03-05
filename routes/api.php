@@ -10,7 +10,9 @@ use App\Http\Controllers\Api\ItemController;
 use App\Http\Controllers\Api\FloatRequestController;
 use App\Http\Controllers\Api\ExpenseController;
 use App\Http\Controllers\Api\MetadataController;
+use App\Http\Controllers\Api\MpesaCallbackController;
 
+Route::post('/mpesa/callback', [MpesaCallbackController::class, 'handle']);
 Route::post('/login', [AuthController::class, 'login'])->name('login');
 
 Route::middleware('auth:sanctum')->group(function () {
@@ -48,7 +50,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/expenses', [ExpenseController::class, 'index']);
 
     Route::get('/metadata/payment-methods', [MetadataController::class, 'getPaymentMethods']);
-    Route::get('/metadata/expense-categories', [MetadataController::class, 'getExpenseCategories']);
+    Route::get('/metadata/expense-categories', [MetadataController::class, 'getExpenseCategories']);  
 
     Route::post('/logout', [AuthController::class, 'logout']);
 });

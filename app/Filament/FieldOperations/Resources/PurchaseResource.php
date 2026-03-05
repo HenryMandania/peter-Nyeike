@@ -218,6 +218,20 @@ class PurchaseResource extends Resource
                     'rejected' => 'danger',
                     default => 'gray',
                 }),
+
+            Tables\Columns\TextColumn::make('mpesa_status') 
+                ->label('M-Pesa Status')
+                ->badge()
+                ->getStateUsing(fn ($record) =>
+                    
+                    $record->mpesaTransactions()->latest()->first()?->status
+                )
+                ->color(fn (string $state): string => match ($state) {
+                    'completed' => 'success',
+                    'requested' => 'warning',
+                    'failed' => 'danger',
+                    default => 'gray',
+                }),
         ])
         ->defaultSort('created_at', 'desc')
         ->filters([
@@ -302,20 +316,27 @@ class PurchaseResource extends Resource
                     ->icon('heroicon-o-banknotes')
                     ->color('success')
                     ->requiresConfirmation()
-                    ->visible(fn ($record) => $record->status === 'approved' && !$record->mpesa_receipt_number)
-                    // No form here—we let the service find the phone number
+                    ->visible(fn ($record) => 
+                        // 1. Must be approved
+                        $record->status === 'approved' && 
+                        // 2. Payment method must be M-Pesa (adjust 'mpesa' to match your DB value)
+                        $record->payment_method === 'mpesa' && 
+                        // 3. Must not have a completed transaction already
+                        !$record->mpesaTransactions()->where('status', 'completed')->exists()
+                    )
                     ->action(function ($record, MpesaService $service) {
                         $response = $service->processPayment($record);
-                
+                                
                         if ($response['status']) {
                             Notification::make()
                                 ->title('STK Push Sent')
+                                ->body('Waiting for user to enter PIN...')
                                 ->success()
                                 ->send();
                         } else {
                             Notification::make()
                                 ->title('Payment Failed')
-                                ->body($response['message'])
+                                ->body($response['message'] ?? 'Unable to trigger STK Push')
                                 ->danger()
                                 ->send();
                         }

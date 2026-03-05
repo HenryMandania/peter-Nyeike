@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\ValidationException;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 
 class Purchase extends Model
 {
@@ -72,4 +73,8 @@ class Purchase extends Model
     public function approver(): BelongsTo { return $this->belongsTo(User::class, 'approved_by'); }
     public function shift(): BelongsTo { return $this->belongsTo(Shift::class); }
     public function seller(): BelongsTo { return $this->belongsTo(User::class, 'sold_by'); }
+    public function mpesaTransactions(): MorphMany
+    {
+        return $this->morphMany(MpesaTransaction::class, 'transactionable');
+    }
 }
