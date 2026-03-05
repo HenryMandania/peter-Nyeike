@@ -317,13 +317,10 @@ class PurchaseResource extends Resource
                     ->color('success')
                     ->requiresConfirmation()
                     ->visible(fn ($record) => 
-                        // 1. Must be approved
-                        $record->status === 'approved' && 
-                        // 2. Payment method must be M-Pesa (adjust 'mpesa' to match your DB value)
-                        $record->payment_method === 'mpesa' && 
-                        // 3. Must not have a completed transaction already
-                        !$record->mpesaTransactions()->where('status', 'completed')->exists()
-                    )
+                                $record->status === 'approved' && 
+                                str($record->payment_method)->lower()->contains('mpesa') && // Safer check
+                                !$record->mpesaTransactions()->where('status', 'completed')->exists()
+                            )
                     ->action(function ($record, MpesaService $service) {
                         $response = $service->processPayment($record);
                                 
