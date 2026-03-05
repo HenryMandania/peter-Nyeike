@@ -14,6 +14,7 @@ use Illuminate\Routing\Controllers\HasMiddleware;
 use Illuminate\Routing\Controllers\Middleware;
 use Exception;
 use App\Services\MpesaService;
+use App\Jobs\MpesaStkPushJob;
 
 class PurchaseController extends Controller implements HasMiddleware
 {
@@ -187,20 +188,20 @@ class PurchaseController extends Controller implements HasMiddleware
 
     public function pay($purchaseId)
     {
-        $purchase = Purchase::findOrFail($purchaseId);
+        $purchase = Purchase::with('vendor')->findOrFail($purchaseId);
     
         if ($purchase->status !== 'approved') {
             return response()->json([
-                'message' => 'Purchase must be approved before payment.'
+                'message' => 'Payment cannot be initiated. Purchase must be in "approved" status.'
             ], 422);
         }
     
-        // Dispatch job to queue
-        InitiateMpesaPayment::dispatch($purchase->id);
+        // Dispatch the job
+        MpesaStkPushJob::dispatch($purchase);
     
         return response()->json([
-            'message' => 'Payment request sent for processing.'
-        ]);
+            'message' => 'Payment request is queued. STK Push will be sent shortly.'
+        ], 200);
     }
 }
     
