@@ -14,6 +14,7 @@ use Exception;
 class MpesaService
 {
     protected $config;
+    // Strictly define allowed statuses to match your database ENUM
     protected $validStatuses = ['requested', 'completed', 'failed', 'cancelled'];
 
     public function __construct()
@@ -56,6 +57,10 @@ class MpesaService
                 $resData = json_decode($response, true);
                 
                 if (isset($resData['CheckoutRequestID'])) {
+                    // Force status to be valid or default to 'failed'
+                    $initialStatus = 'requested';
+                    $finalStatus = in_array($initialStatus, $this->validStatuses) ? $initialStatus : 'failed';
+
                     MpesaTransaction::create([
                         'transactionable_id'   => $model->id,
                         'transactionable_type' => get_class($model),
@@ -63,7 +68,7 @@ class MpesaService
                         'checkout_request_id'  => $resData['CheckoutRequestID'],
                         'amount'               => $amount,
                         'phone_number'         => $phoneNumber,
-                        'status'               => 'requested', // Valid ENUM value
+                        'status'               => $finalStatus,
                     ]);
 
                     return ['status' => true, 'message' => 'STK Push sent to ' . $phoneNumber];
@@ -72,8 +77,8 @@ class MpesaService
                 throw new Exception($resData['errorMessage'] ?? 'Safaricom API Error.');
 
             } catch (Exception $e) {
-                Log::error("M-Pesa Error: " . $e->getMessage());
-                return ['status' => false, 'message' => $e->getMessage()];
+                Log::error("M-Pesa Transaction Error: " . $e->getMessage());
+                return ['status' => false, 'message' => "M-Pesa Service Error."];
             }
         });
     }
