@@ -33,7 +33,9 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/purchases', [PurchaseController::class, 'index'])->middleware('permission:purchase.view');
     Route::post('/purchases', [PurchaseController::class, 'store'])->middleware('permission:purchase.create');
     Route::post('/purchases/{purchase}/approve', [PurchaseController::class, 'approve'])->middleware('permission:purchase.approve');
-    Route::post('/purchases/{purchase}/reject', [PurchaseController::class, 'approve'])->middleware('permission:purchase.approve');});
+    Route::post('/purchases/{purchase}/pay', [PurchaseController::class, 'pay'])->middleware('permission:purchase.approve');
+    Route::post('/purchases/{purchase}/sell', [PurchaseController::class, 'sell'])->middleware('permission:purchase.approve');
+    Route::post('/purchases/{purchase}/reject', [PurchaseController::class, 'approve'])->middleware('permission:purchase.approve');});  
 
     Route::get('/items', [ItemController::class, 'index']);
        

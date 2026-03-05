@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Routing\Controllers\HasMiddleware;
 use Illuminate\Routing\Controllers\Middleware;
 use Exception;
+use App\Services\MpesaService;
 
 class PurchaseController extends Controller implements HasMiddleware
 {
@@ -183,6 +184,23 @@ class PurchaseController extends Controller implements HasMiddleware
             'data'    => $purchase->load(['vendor', 'item', 'shift'])
         ], 200);
     }
+
+                public function pay(Request $request, $purchaseId)
+            {
+                 
+                $purchase = Purchase::findOrFail($purchaseId);
+
+                 
+                $mpesaService = new MpesaService();
+                $result = $mpesaService->processPayment($purchase);
+
+                 
+                if ($result['status']) {
+                    return response()->json(['message' => $result['message']], 200);
+                }
+
+                return response()->json(['message' => $result['message']], 400);
+            }
 }
     
 
