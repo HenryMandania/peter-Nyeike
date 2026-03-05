@@ -185,36 +185,22 @@ class PurchaseController extends Controller implements HasMiddleware
         ], 200);
     }
 
-    public function pay(Request $request, $purchaseId)
+    public function pay($purchaseId)
     {
-        // 1. Find the purchase
-        $purchase = Purchase::with('vendor')->findOrFail($purchaseId);
+        $purchase = Purchase::findOrFail($purchaseId);
     
-        // 2. Validate state before payment
         if ($purchase->status !== 'approved') {
             return response()->json([
-                'message' => 'Payment cannot be initiated. Purchase must be in "approved" status.'
+                'message' => 'Purchase must be approved before payment.'
             ], 422);
         }
     
-        // 3. Process payment
-        $mpesaService = new MpesaService();
-        $result = $mpesaService->processPayment($purchase);
-    
-        // 4. Handle result
-        if (!$result['status']) {
-            // Log the exact reason for the failure for internal debugging
-            \Log::error("M-Pesa Payment Failed for Purchase #{$purchaseId}: " . $result['message']);
-            
-            return response()->json([
-                'message' => 'Payment initiation failed.',
-                'error'   => $result['message']
-            ], 400);
-        }
+        // Dispatch job to queue
+        InitiateMpesaPayment::dispatch($purchase->id);
     
         return response()->json([
-            'message' => $result['message']
-        ], 200);
+            'message' => 'Payment request sent for processing.'
+        ]);
     }
 }
     
