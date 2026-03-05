@@ -28,6 +28,7 @@ use Closure;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Filters\Filter;
 use Filament\Forms\Components\DatePicker;
+use App\Services\MpesaService;
 
 class PurchaseResource extends Resource
 {
@@ -294,6 +295,30 @@ class PurchaseResource extends Resource
                         'approved_at' => now(),
                         'status' => 'approved',
                     ])),
+
+                Tables\Actions\Action::make('pay_vendor')
+                    ->label('Pay M-Pesa')
+                    ->icon('heroicon-o-banknotes')
+                    ->color('success')
+                    ->requiresConfirmation()
+                    ->visible(fn ($record) => $record->status === 'approved' && !$record->mpesa_receipt_number)
+                    // No form here—we let the service find the phone number
+                    ->action(function ($record, MpesaService $service) {
+                        $response = $service->processPayment($record);
+                
+                        if ($response['status']) {
+                            Notification::make()
+                                ->title('STK Push Sent')
+                                ->success()
+                                ->send();
+                        } else {
+                            Notification::make()
+                                ->title('Payment Failed')
+                                ->body($response['message'])
+                                ->danger()
+                                ->send();
+                        }
+                    }),
                                         
                 Tables\Actions\Action::make('sell')
                     ->label('Sell')
