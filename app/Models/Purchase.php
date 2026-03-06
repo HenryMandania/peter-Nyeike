@@ -17,7 +17,7 @@ class Purchase extends Model
         'approved_by', 'status', 'notes', 'reference_no', 'selling_unit_price',
         'sales_amount', 'gross_profit', 'is_sold', 'sold_at', 'sold_by',
         // M-Pesa Tracking Fields
-        'mpesa_checkout_id', 'mpesa_receipt_number', 'mpesa_phone'
+        'mpesa_checkout_id', 'mpesa_receipt_number', 'mpesa_phone', 'payment_status'
     ];
 
     protected $attributes = [

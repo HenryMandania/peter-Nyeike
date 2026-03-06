@@ -188,36 +188,43 @@ class PurchaseController extends Controller implements HasMiddleware
 
     public function pay($purchaseId)
 {
-    $purchase = Purchase::with('vendor')->findOrFail($purchaseId);
-
-    // 1. Status Check
-    if ($purchase->status !== 'approved') {
-        return response()->json([
-            'message' => 'Payment cannot be initiated. Purchase must be in "approved" status.'
-        ], 422);
-    }
-
-    // 2. Prevent Duplicate STK Pushes
-    $existingTransaction = \App\Models\MpesaTransaction::where('transactionable_id', $purchase->id)
-        ->where('transactionable_type', Purchase::class)
-        ->where('status', 'requested')
-        ->exists();
-
-    if ($existingTransaction) {
-        return response()->json([
-            'message' => 'A payment request is already pending for this purchase.'
-        ], 422);
-    }
-
-    // 3. Dispatch the job
-    MpesaStkPushJob::dispatch($purchase);
-
-    return response()->json([
-        'message' => 'Payment request is queued. STK Push will be sent shortly.'
-    ], 200);
-}
-}
+    try {
+        $purchase = Purchase::findOrFail($purchaseId);
     
-
- 
-
+        if($purchase->status !== 'approved'){
+            return response()->json([
+                'message' => 'Purchase must be approved'
+            ], 422);
+        }
+        
+        // Check if already paid
+        if($purchase->status === 'paid' || $purchase->mpesa_receipt_number) {
+            return response()->json([
+                'message' => 'Purchase already paid',
+                'receipt' => $purchase->mpesa_receipt_number
+            ], 422);
+        }
+        
+        // Check if payment is already processing
+        if($purchase->payment_status === 'processing' && $purchase->mpesa_checkout_id) {
+            return response()->json([
+                'message' => 'Payment already in progress',
+                'checkout_id' => $purchase->mpesa_checkout_id
+            ], 422);
+        }
+    
+        MpesaStkPushJob::dispatch($purchase->id);
+    
+        return response()->json([
+            'message' => 'Payment request queued successfully',
+            'purchase_id' => $purchaseId
+        ]);
+        
+    } catch (\Exception $e) {
+        Log::error('Pay endpoint error: ' . $e->getMessage());
+        return response()->json([
+            'message' => 'Error processing payment request'
+        ], 500);
+    }
+}
+}  

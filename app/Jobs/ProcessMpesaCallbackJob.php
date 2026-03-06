@@ -3,19 +3,23 @@
 namespace App\Jobs;
 
 use App\Models\MpesaTransaction;
+use App\Models\Purchase;
+use App\Models\FloatRequest;
+use App\Models\Expense;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 
 class ProcessMpesaCallbackJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
-    public $payload;
+    protected array $payload;
+    public $tries = 3;
+    public $backoff = 5;
 
     public function __construct(array $payload)
     {
@@ -24,57 +28,110 @@ class ProcessMpesaCallbackJob implements ShouldQueue
 
     public function handle(): void
     {
-        $callbackData = $this->payload['Body']['stkCallback'] ?? null;
+        $callback = $this->payload['Body']['stkCallback'] ?? null;
 
-        if (!$callbackData) {
-            Log::error("ProcessMpesaCallbackJob: Missing stkCallback data.");
+        if (!$callback) {
             return;
         }
 
-        $checkoutID = $callbackData['CheckoutRequestID'];
-        $transaction = MpesaTransaction::where('checkout_request_id', $checkoutID)->first();
+        $checkoutID = trim($callback['CheckoutRequestID'] ?? '');
+        $resultCode = $callback['ResultCode'] ?? 1;
+        $resultDesc = $callback['ResultDesc'] ?? '';
 
-        if (!$transaction) {
-            Log::error("ProcessMpesaCallbackJob: Transaction not found for ID: " . $checkoutID);
-            return;
-        }
+        try {
+            $transaction = MpesaTransaction::where('checkout_request_id', $checkoutID)->first();
 
-        // Extract metadata safely
-        $metadata = $callbackData['CallbackMetadata']['Item'] ?? [];
-        $receipt = collect($metadata)->where('Name', 'MpesaReceiptNumber')->first()['Value'] ?? null;
-
-        if ($callbackData['ResultCode'] == 0) {
-            // Update MpesaTransaction record
-            $transaction->update([
-                'status' => 'completed',
-                'mpesa_receipt_number' => (string)$receipt,
-                'result_desc' => $callbackData['ResultDesc'],
-                'raw_callback_payload' => json_encode($this->payload),
-                'completed_at' => now(),
-            ]);
-
-            // Update Purchase record using DB facade to bypass potential model events
-            $record = $transaction->transactionable;
-            if ($record) {
-                Log::info("DEBUG: Attempting raw DB update for Purchase ID: {$record->id}");
-                
-                DB::table('purchases')
-                    ->where('id', $record->id)
-                    ->update([
-                        'status' => 'paid',
-                        'mpesa_receipt_number' => (string)$receipt,
-                    ]);
-                
-                Log::info("ProcessMpesaCallbackJob: Purchase {$record->id} updated to 'paid' successfully.");
+            if (!$transaction) {
+                return;
             }
-        } else {
-            // Update as failed
-            $transaction->update([
-                'status' => 'failed',
-                'result_desc' => $callbackData['ResultDesc'] ?? 'User Cancelled',
-                'raw_callback_payload' => json_encode($this->payload),
+
+            DB::transaction(function () use ($transaction, $callback, $resultCode, $resultDesc) {
+                
+                $lockedTransaction = MpesaTransaction::where('id', $transaction->id)
+                    ->lockForUpdate()
+                    ->first();
+
+                if (!$lockedTransaction || in_array($lockedTransaction->status, ['completed', 'failed'])) {
+                    return;
+                }
+
+                if ($resultCode == 0) {
+                    $this->handleSuccessfulPayment($lockedTransaction, $callback);
+                } else {
+                    $this->handleFailedPayment($lockedTransaction, $resultDesc);
+                }
+            });
+            
+        } catch (\Exception $e) {
+            // Log only critical errors, or use your error tracking service
+        }
+    }
+
+    protected function handleSuccessfulPayment($transaction, $callback)
+    {
+        $metadata = $callback['CallbackMetadata']['Item'] ?? [];
+        
+        $receipt = null;
+        foreach ($metadata as $item) {
+            if ($item['Name'] === 'MpesaReceiptNumber') {
+                $receipt = $item['Value'] ?? null;
+                break;
+            }
+        }
+        
+        if (!$receipt) {
+            return;
+        }
+
+        // Update transaction
+        $transaction->update([
+            'status' => 'completed',
+            'mpesa_receipt_number' => $receipt,
+            'result_desc' => $callback['ResultDesc'] ?? 'Success',
+            'raw_callback_payload' => json_encode($this->payload),
+            'completed_at' => now(),
+        ]);
+
+        // Update the related record
+        $record = $transaction->transactionable;
+        if ($record) {
+            if ($record instanceof Purchase) {
+                $record->update([
+                    'status' => 'paid',
+                    'payment_status' => 'paid',
+                    'mpesa_receipt_number' => $receipt,
+                    'mpesa_error_message' => null,
+                ]);
+                
+            } elseif ($record instanceof FloatRequest) {
+                $record->update([
+                    'status' => 'paid',
+                    'mpesa_receipt_number' => $receipt,
+                ]);
+                
+            } elseif ($record instanceof Expense) {
+                $record->update([
+                    'status' => 'paid',
+                    'mpesa_receipt_number' => $receipt,
+                ]);
+            }
+        }
+    }
+
+    protected function handleFailedPayment($transaction, $resultDesc)
+    {
+        $transaction->update([
+            'status' => 'failed',
+            'result_desc' => $resultDesc,
+            'raw_callback_payload' => json_encode($this->payload),
+        ]);
+        
+        $record = $transaction->transactionable;
+        if ($record && $record instanceof Purchase) {
+            $record->update([
+                'payment_status' => 'failed',
+                'mpesa_error_message' => $resultDesc,
             ]);
-            Log::warning("ProcessMpesaCallbackJob: M-Pesa Payment Failed: {$callbackData['ResultDesc']}");
         }
     }
 }

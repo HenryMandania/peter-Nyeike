@@ -11,6 +11,10 @@ use App\Http\Controllers\Api\FloatRequestController;
 use App\Http\Controllers\Api\ExpenseController;
 use App\Http\Controllers\Api\MetadataController;
 use App\Http\Controllers\Api\MpesaCallbackController;
+use Illuminate\Support\Facades\DB;
+use App\Models\MpesaTransaction;
+use App\Models\Purchase;
+use App\Jobs\ProcessMpesaCallbackJob;
 
 Route::post('/mpesa/callback', [MpesaCallbackController::class, 'handle']);
 Route::post('/login', [AuthController::class, 'login'])->name('login');
@@ -55,4 +59,62 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/metadata/expense-categories', [MetadataController::class, 'getExpenseCategories']);  
 
     Route::post('/logout', [AuthController::class, 'logout']);
+
+
+        // Add to routes/api.php
+        Route::post('/test-callback-manual', function(Request $request) {
+            $checkoutId = $request->checkout_id;
+            
+            // Validate input
+            if (!$checkoutId) {
+                return response()->json(['error' => 'checkout_id is required'], 400);
+            }
+            
+            try {
+                // Find the transaction
+                $transaction = MpesaTransaction::where('checkout_request_id', $checkoutId)->first();
+                
+                if (!$transaction) {
+                    return response()->json([
+                        'error' => 'Transaction not found',
+                        'checkout_id' => $checkoutId
+                    ], 404);
+                }
+                
+                // Manually trigger the update in a transaction
+                DB::transaction(function() use ($transaction) {
+                    // Update MpesaTransaction
+                    $transaction->update([
+                        'status' => 'completed',
+                        'mpesa_receipt_number' => 'MANUAL_' . time(),
+                        'result_desc' => 'Manual update',
+                        'completed_at' => now()
+                    ]);
+                    
+                    // Update the related purchase
+                    $purchase = Purchase::find($transaction->transactionable_id);
+                    if ($purchase) {
+                        $purchase->update([
+                            'status' => 'paid',
+                            'payment_status' => 'paid',
+                            'mpesa_receipt_number' => $transaction->mpesa_receipt_number,
+                            'mpesa_error_message' => null
+                        ]);
+                    }
+                });
+                
+                return response()->json([
+                    'message' => 'Manual update completed',
+                    'transaction_id' => $transaction->id,
+                    'purchase_id' => $transaction->transactionable_id,
+                    'receipt' => $transaction->mpesa_receipt_number
+                ]);
+                
+            } catch (\Exception $e) {
+                return response()->json([
+                    'error' => 'Update failed',
+                    'message' => $e->getMessage()
+                ], 500);
+            }
+        });
 });
