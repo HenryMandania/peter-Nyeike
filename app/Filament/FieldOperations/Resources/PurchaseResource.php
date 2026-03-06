@@ -311,33 +311,41 @@ class PurchaseResource extends Resource
                         'status' => 'approved',
                     ])),
 
-                Tables\Actions\Action::make('pay_vendor')
+                    Tables\Actions\Action::make('pay_vendor')
                     ->label('Pay M-Pesa')
                     ->icon('heroicon-o-banknotes')
                     ->color('success')
                     ->requiresConfirmation()
+                    ->modalHeading('Confirm Vendor Payment')
+                    ->modalDescription('This will initiate an M-Pesa payment. Ensure the vendor details are correct.')
                     ->visible(fn ($record) => 
-                                $record->status === 'approved' && 
-                                str($record->payment_method)->lower()->contains('mpesa') && // Safer check
-                                !$record->mpesaTransactions()->where('status', 'completed')->exists()
-                            )
+                        $record->status === 'approved' && 
+                        str($record->payment_method)->lower()->contains('mpesa') &&
+                        !$record->mpesaTransactions()->where('status', 'completed')->exists()
+                    )
                     ->action(function ($record, MpesaService $service) {
-                        $response = $service->processPayment($record);
-                                
-                        if ($response['status']) {
-                            Notification::make()
-                                ->title('STK Push Sent')
-                                ->body('Waiting for user to enter PIN...')
-                                ->success()
-                                ->send();
-                        } else {
+                        try {
+                            $response = $service->processVendorPayment($record);
+                            
+                            // Logic to check API success
+                            if ($response) {
+                                Notification::make()
+                                    ->title('Payment Initiated')
+                                    ->body('The M-Pesa request has been sent to the vendor.')
+                                    ->success()
+                                    ->send();
+                            } else {
+                                throw new \Exception('API did not return a valid response.');
+                            }
+                        } catch (\Exception $e) {
                             Notification::make()
                                 ->title('Payment Failed')
-                                ->body($response['message'] ?? 'Unable to trigger STK Push')
+                                ->body($e->getMessage())
                                 ->danger()
                                 ->send();
                         }
-                    }),
+                    })
+                    ->after(fn ($livewire) => $livewire->dispatch('refresh')) ,
                                         
                 Tables\Actions\Action::make('sell')
                     ->label('Sell')

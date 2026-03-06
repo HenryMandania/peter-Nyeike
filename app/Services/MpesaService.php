@@ -2,95 +2,99 @@
 
 namespace App\Services;
 
-use App\Models\MpesaConfig;
-use App\Models\MpesaTransaction;
-use App\Models\Purchase;
 use Safaricom\Mpesa\Mpesa;
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Log;
+use App\Models\Purchase;
+use App\Models\MpesaConfig;
 use Exception;
 
 class MpesaService
 {
+    protected $mpesa;
     protected $config;
 
     public function __construct()
     {
+        $this->mpesa = new Mpesa();
+        // Fetch active configuration from DB
         $this->config = MpesaConfig::where('is_active', true)->first();
-    }
-
-    private function formatPhoneNumber($phone)
-    {
-        $phone = preg_replace('/[^0-9]/', '', $phone);
-        if (str_starts_with($phone, '0')) return '254' . substr($phone, 1);
-        if (strlen($phone) == 9) return '254' . $phone;
-        return $phone;
-    }
-
-    public function processPayment($model, $customerPhone)
-    {
+        
         if (!$this->config) {
-            throw new Exception("M-Pesa configuration missing.");
+            throw new Exception("Active M-Pesa configuration not found in database.");
+        }
+    }
+
+    /**
+     * Dynamically generates the security credential and retrieves config.
+     */
+    private function getCredentials()
+    {
+        if (empty($this->config->initiator_password)) {
+            throw new Exception("Initiator password is not configured.");
         }
 
-        return DB::transaction(function () use ($model, $customerPhone) {
-            // Calculate amount safely
-            $amount = $model->total_amount - ($model->transaction_fee ?? 0);
-
-            if ($amount <= 0) {
-                throw new Exception("Invalid transaction amount: " . $amount);
-            }
-
-            $formattedPhone = $this->formatPhoneNumber($customerPhone);
-
-            return $this->initiateStkPush($model, $formattedPhone, $amount);
-        });
+        return [
+            'initiator' => $this->config->initiator_name,
+            'security_credential' => $this->generateSecurityCredential($this->config->initiator_password),
+            'shortcode' => $this->config->shortcode
+        ];
     }
 
-    public function initiateStkPush($model, $phoneNumber, $amount)
+    /**
+     * Encrypts the initiator password using the cert.cer file.
+     */
+    public function generateSecurityCredential($initiatorPassword)
     {
-        try {
-            putenv("MPESA_ENV=" . strtolower($this->config->env));
-            putenv("MPESA_CONSUMER_KEY=" . $this->config->consumer_key);
-            putenv("MPESA_CONSUMER_SECRET=" . $this->config->consumer_secret);
-            putenv("MPESA_PASSKEY=" . $this->config->passkey);
-            putenv("MPESA_SHORTCODE=" . $this->config->shortcode);
+        $certPath = storage_path('app/cert.cer');
+        
+        if (!file_exists($certPath)) {
+            throw new Exception("Certificate file (cert.cer) not found at: {$certPath}");
+        }
 
-            $mpesa = new Mpesa();
-            $callbackUrl = $this->config->callback_url;
-            $reference = strtoupper(substr(class_basename($model), 0, 3)) . '_' . $model->id;
+        $publicKey = openssl_pkey_get_public(file_get_contents($certPath));
+        
+        if (!$publicKey) {
+            throw new Exception("Invalid certificate file provided.");
+        }
+        
+        // Encrypt the password using PKCS1 padding
+        openssl_public_encrypt($initiatorPassword, $encrypted, $publicKey, OPENSSL_PKCS1_PADDING);
+        
+        // Return base64 encoded string as required by M-Pesa API
+        return base64_encode($encrypted);
+    }
 
-            $response = $mpesa->STKPushSimulation(
-                $this->config->shortcode, $this->config->passkey, 'CustomerPayBillOnline',
-                $amount, $phoneNumber, $this->config->shortcode, $phoneNumber,
-                $callbackUrl, $reference, "Payment: " . class_basename($model), 'Payment'
+    public function processVendorPayment(Purchase $purchase)
+    {
+        $creds = $this->getCredentials();
+
+        if ($purchase->vendor_type === 'phone') {
+            return $this->mpesa->b2c(
+                $creds['initiator'],
+                $creds['security_credential'],
+                "BusinessPayment",
+                $purchase->total_amount,
+                $creds['shortcode'],
+                $purchase->vendor_phone, 
+                "Payment for Purchase #" . $purchase->id,
+                $this->config->timeout_url,
+                $this->config->result_url,
+                "" 
             );
-
-            $resData = json_decode($response, true);
-
-            if (!isset($resData['CheckoutRequestID'])) {
-                throw new Exception($resData['errorMessage'] ?? 'STK Push failed');
-            }
-
-            // Save to DB
-            MpesaTransaction::create([
-                'transactionable_id' => $model->id,
-                'transactionable_type' => get_class($model),
-                'checkout_request_id' => $resData['CheckoutRequestID'],
-                'amount' => $amount,
-                'phone_number' => $phoneNumber,
-                'status' => 'requested',
-            ]);
-
-            $model->update([
-                'payment_status' => 'processing',
-                'mpesa_checkout_id' => $resData['CheckoutRequestID']
-            ]);
-
-            return ['CheckoutRequestID' => $resData['CheckoutRequestID']];
-        } catch (Exception $e) {
-            Log::error("STK Push error: " . $e->getMessage());
-            throw $e;
+        } else {
+            return $this->mpesa->b2b(
+                $creds['initiator'],
+                $creds['security_credential'],
+                $purchase->total_amount,
+                $creds['shortcode'], 
+                $purchase->vendor_paybill, 
+                "Payment for Purchase #" . $purchase->id,
+                $this->config->timeout_url,
+                $this->config->result_url,
+                $purchase->id, 
+                "BusinessPayBill",
+                "Shortcode",
+                "Shortcode"
+            );
         }
     }
 }

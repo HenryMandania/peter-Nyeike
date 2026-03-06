@@ -16,31 +16,24 @@ class PaymentController extends Controller
         $this->mpesaService = $mpesaService;
     }
 
-    public function initiateMobilePayment(Request $request)
+    public function initiateVendorPayment(Request $request)
     {
-        // Validate: purchase_id is required, phone is required from the app
-        $request->validate([
-            'purchase_id' => 'required|exists:purchases,id',
-            'phone'       => 'required|string',
-        ]);
-
+        $request->validate(['purchase_id' => 'required|exists:purchases,id']);
+        
         try {
-            // Fetch the model object
             $purchase = Purchase::findOrFail($request->purchase_id);
-
-            // Pass the model and the customer's phone to the service
-            $result = $this->mpesaService->processPayment($purchase, $request->phone);
+            $response = $this->mpesaService->processVendorPayment($purchase);
+            
+            // Decodes the string response from the library
+            $result = json_decode($response, true);
 
             return response()->json([
                 'success' => true,
-                'message' => 'STK Push sent successfully',
+                'message' => 'Payment request sent to M-Pesa.',
                 'data' => $result
-            ], 200);
+            ]);
         } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Payment initiation failed: ' . $e->getMessage()
-            ], 500);
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
     }
 }

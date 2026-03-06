@@ -1,137 +1,47 @@
 <?php
 
-namespace App\Jobs;
+namespace App\Http\Controllers\Api;
 
-use App\Models\MpesaTransaction;
-use App\Models\Purchase;
-use App\Models\FloatRequest;
-use App\Models\Expense;
-use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Foundation\Bus\Dispatchable;
-use Illuminate\Queue\InteractsWithQueue;
-use Illuminate\Queue\SerializesModels;
-use Illuminate\Support\Facades\DB;
+use App\Http\Controllers\Controller;
+use Illuminate\Http\Request;
+use App\Jobs\ProcessMpesaCallbackJob; // Your existing STK Job
+use App\Jobs\ProcessB2B2CCallbackJob; // The new Job we created
+use Illuminate\Support\Facades\Log;
 
-class ProcessMpesaCallbackJob implements ShouldQueue
+class MpesaCallbackController extends Controller
 {
-    use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
-
-    protected array $payload;
-    public $tries = 3;
-    public $backoff = 5;
-
-    public function __construct(array $payload)
+    /**
+     * Handle incoming M-Pesa callbacks.
+     * This controller acts as a router for different M-Pesa API response types.
+     */
+    public function handle(Request $request)
     {
-        $this->payload = $payload;
-    }
+        $data = $request->all();
 
-    public function handle(): void
-    {
-        $callback = $this->payload['Body']['stkCallback'] ?? null;
+        // 1. Log the incoming payload for audit purposes
+        Log::info("MPESA CALLBACK RECEIVED", $data);
 
-        if (!$callback) {
-            return;
-        }
-
-        $checkoutID = trim($callback['CheckoutRequestID'] ?? '');
-        $resultCode = $callback['ResultCode'] ?? 1;
-        $resultDesc = $callback['ResultDesc'] ?? '';
-
-        try {
-            $transaction = MpesaTransaction::where('checkout_request_id', $checkoutID)->first();
-
-            if (!$transaction) {
-                return;
-            }
-
-            DB::transaction(function () use ($transaction, $callback, $resultCode, $resultDesc) {
-                
-                $lockedTransaction = MpesaTransaction::where('id', $transaction->id)
-                    ->lockForUpdate()
-                    ->first();
-
-                if (!$lockedTransaction || in_array($lockedTransaction->status, ['completed', 'failed'])) {
-                    return;
-                }
-
-                if ($resultCode == 0) {
-                    $this->handleSuccessfulPayment($lockedTransaction, $callback);
-                } else {
-                    $this->handleFailedPayment($lockedTransaction, $resultDesc);
-                }
-            });
-            
-        } catch (\Exception $e) {
-            // Log only critical errors, or use your error tracking service
-        }
-    }
-
-    protected function handleSuccessfulPayment($transaction, $callback)
-    {
-        $metadata = $callback['CallbackMetadata']['Item'] ?? [];
+        // 2. Routing logic based on payload structure
+        // STK Push payloads contain 'Body'
+        if (isset($data['Body']['stkCallback'])) {
+            ProcessMpesaCallbackJob::dispatch($data);
+        } 
         
-        $receipt = null;
-        foreach ($metadata as $item) {
-            if ($item['Name'] === 'MpesaReceiptNumber') {
-                $receipt = $item['Value'] ?? null;
-                break;
-            }
-        }
+        // B2C/B2B result payloads contain 'Result'
+        elseif (isset($data['Result'])) {
+            ProcessB2B2CCallbackJob::dispatch($data);
+        } 
         
-        if (!$receipt) {
-            return;
+        // Handle unexpected payloads
+        else {
+            Log::warning("Unknown M-Pesa callback format received", $data);
         }
 
-        // Update transaction
-        $transaction->update([
-            'status' => 'completed',
-            'mpesa_receipt_number' => $receipt,
-            'result_desc' => $callback['ResultDesc'] ?? 'Success',
-            'raw_callback_payload' => json_encode($this->payload),
-            'completed_at' => now(),
+        // 3. Return immediate acknowledgment to Safaricom
+        // Safaricom expects a 200 OK response to stop resending the callback
+        return response()->json([
+            'ResultCode' => 0,
+            'ResultDesc' => 'Accepted'
         ]);
-
-        // Update the related record
-        $record = $transaction->transactionable;
-        if ($record) {
-            if ($record instanceof Purchase) {
-                $record->update([
-                    'status' => 'paid',
-                    'payment_status' => 'paid',
-                    'mpesa_receipt_number' => $receipt,
-                    'mpesa_error_message' => null,
-                ]);
-                
-            } elseif ($record instanceof FloatRequest) {
-                $record->update([
-                    'status' => 'paid',
-                    'mpesa_receipt_number' => $receipt,
-                ]);
-                
-            } elseif ($record instanceof Expense) {
-                $record->update([
-                    'status' => 'paid',
-                    'mpesa_receipt_number' => $receipt,
-                ]);
-            }
-        }
-    }
-
-    protected function handleFailedPayment($transaction, $resultDesc)
-    {
-        $transaction->update([
-            'status' => 'failed',
-            'result_desc' => $resultDesc,
-            'raw_callback_payload' => json_encode($this->payload),
-        ]);
-        
-        $record = $transaction->transactionable;
-        if ($record && $record instanceof Purchase) {
-            $record->update([
-                'payment_status' => 'failed',
-                'mpesa_error_message' => $resultDesc,
-            ]);
-        }
     }
 }
