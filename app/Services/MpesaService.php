@@ -38,24 +38,34 @@ class MpesaService
     }
 
     public function processPayment($model)
-{
-    // Hardcoded config for testing purposes
-    $this->config = (object) [
-        'consumer_key'    => 'NBdWttxdv29OzT55G0eiQrnYpxdj0VAxbTtnGzurPTn4vKpS',
-        'consumer_secret' => 'mvw7M7fSQIExV4COwCFx8eZQCaCiNe8YLeNi6m95LmDZAHgps9b6X2sIYSZTU40C',
-        'shortcode'       => '174379',
-        'passkey'         => 'bfb279f9aa9bdbcf158e97dd71a467cd2e0c893059b10f78e6b72ada1ed2c919',
-        'env'             => 'sandbox',
-        'callback_url'    => 'https://test1.goonersystem.com/api/mpesa/callback',
-        'paying_number'   => '254728633090'
-    ];
+    {
+        if (!$this->config || !$this->config->paying_number) {
+            return ['status' => false, 'message' => 'M-Pesa configuration or Paying Number missing.'];
+        }
 
-    // Proceed to initiate the push
-    $amount = $model->total_amount ?? 1; // Fallback to 1 for testing
-    $phone = $this->formatPhoneNumber($this->config->paying_number);
+        return DB::transaction(function () use ($model) {
+            $existing = MpesaTransaction::where('transactionable_id', $model->id)
+                ->where('transactionable_type', get_class($model))
+                ->whereIn('status', ['requested', 'processing'])
+                ->lockForUpdate()
+                ->first();
 
-    return $this->initiateStkPush($model, $phone, $amount);
-}
+            if ($existing) return ['status' => false, 'message' => 'Payment request already pending.'];
+
+            $amount = match (true) {
+                $model instanceof Purchase => $model->total_amount - ($model->transaction_fee ?? 0),
+                default => $model->total_amount ?? $model->amount ?? null,
+            };
+
+            if (!$amount || $amount <= 0) return ['status' => false, 'message' => 'Invalid amount.'];
+
+            // Use the config paying number, not the model's phone
+            $phone = $this->formatPhoneNumber($this->config->paying_number);
+
+            return $this->initiateStkPush($model, $phone, $amount);
+        });
+    }
+
     public function initiateStkPush($model, $phoneNumber, $amount, $retryCount = 0)
     {
         try {
