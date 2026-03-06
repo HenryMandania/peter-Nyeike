@@ -9,6 +9,7 @@ use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 
 class ProcessMpesaCallbackJob implements ShouldQueue
 {
@@ -16,17 +17,11 @@ class ProcessMpesaCallbackJob implements ShouldQueue
 
     public $payload;
 
-    /**
-     * Create a new job instance.
-     */
     public function __construct(array $payload)
     {
         $this->payload = $payload;
     }
 
-    /**
-     * Execute the job.
-     */
     public function handle(): void
     {
         $callbackData = $this->payload['Body']['stkCallback'] ?? null;
@@ -44,39 +39,42 @@ class ProcessMpesaCallbackJob implements ShouldQueue
             return;
         }
 
-        if ($callbackData['ResultCode'] == 0) {
-            // Success: Extract receipt
-            $metadata = $callbackData['CallbackMetadata']['Item'] ?? [];
-            $receipt = collect($metadata)->where('Name', 'MpesaReceiptNumber')->first()['Value'] ?? null;
+        // Extract metadata safely
+        $metadata = $callbackData['CallbackMetadata']['Item'] ?? [];
+        $receipt = collect($metadata)->where('Name', 'MpesaReceiptNumber')->first()['Value'] ?? null;
 
-            // Update Transaction
+        if ($callbackData['ResultCode'] == 0) {
+            // Update MpesaTransaction record
             $transaction->update([
                 'status' => 'completed',
-                'mpesa_receipt_number' => $receipt,
+                'mpesa_receipt_number' => (string)$receipt,
                 'result_desc' => $callbackData['ResultDesc'],
                 'raw_callback_payload' => json_encode($this->payload),
                 'completed_at' => now(),
             ]);
 
-            // Update related Purchase record
+            // Update Purchase record using DB facade to bypass potential model events
             $record = $transaction->transactionable;
             if ($record) {
-                $record->update([
-                    'status' => 'paid',
-                    'mpesa_receipt_number' => $receipt,
-                ]);
+                Log::info("DEBUG: Attempting raw DB update for Purchase ID: {$record->id}");
+                
+                DB::table('purchases')
+                    ->where('id', $record->id)
+                    ->update([
+                        'status' => 'paid',
+                        'mpesa_receipt_number' => (string)$receipt,
+                    ]);
+                
+                Log::info("ProcessMpesaCallbackJob: Purchase {$record->id} updated to 'paid' successfully.");
             }
-
-            Log::info("ProcessMpesaCallbackJob: M-Pesa Payment Success for Receipt: {$receipt}");
         } else {
-            // Failure
+            // Update as failed
             $transaction->update([
                 'status' => 'failed',
                 'result_desc' => $callbackData['ResultDesc'] ?? 'User Cancelled',
                 'raw_callback_payload' => json_encode($this->payload),
             ]);
-
-            Log::warning("ProcessMpesaCallbackJob: M-Pesa Payment Failed for {$checkoutID}");
+            Log::warning("ProcessMpesaCallbackJob: M-Pesa Payment Failed: {$callbackData['ResultDesc']}");
         }
     }
 }
