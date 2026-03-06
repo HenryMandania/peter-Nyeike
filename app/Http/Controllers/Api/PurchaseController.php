@@ -15,7 +15,7 @@ use Illuminate\Routing\Controllers\Middleware;
 use Exception;
 use App\Services\MpesaService;
 use App\Jobs\MpesaStkPushJob;
-
+ 
 class PurchaseController extends Controller implements HasMiddleware
 {
     /**
@@ -187,22 +187,35 @@ class PurchaseController extends Controller implements HasMiddleware
     }
 
     public function pay($purchaseId)
-    {
-        $purchase = Purchase::with('vendor')->findOrFail($purchaseId);
-    
-        if ($purchase->status !== 'approved') {
-            return response()->json([
-                'message' => 'Payment cannot be initiated. Purchase must be in "approved" status.'
-            ], 422);
-        }
-    
-        // Dispatch the job
-        MpesaStkPushJob::dispatch($purchase);
-    
+{
+    $purchase = Purchase::with('vendor')->findOrFail($purchaseId);
+
+    // 1. Status Check
+    if ($purchase->status !== 'approved') {
         return response()->json([
-            'message' => 'Payment request is queued. STK Push will be sent shortly.'
-        ], 200);
+            'message' => 'Payment cannot be initiated. Purchase must be in "approved" status.'
+        ], 422);
     }
+
+    // 2. Prevent Duplicate STK Pushes
+    $existingTransaction = \App\Models\MpesaTransaction::where('transactionable_id', $purchase->id)
+        ->where('transactionable_type', Purchase::class)
+        ->where('status', 'requested')
+        ->exists();
+
+    if ($existingTransaction) {
+        return response()->json([
+            'message' => 'A payment request is already pending for this purchase.'
+        ], 422);
+    }
+
+    // 3. Dispatch the job
+    MpesaStkPushJob::dispatch($purchase);
+
+    return response()->json([
+        'message' => 'Payment request is queued. STK Push will be sent shortly.'
+    ], 200);
+}
 }
     
 
