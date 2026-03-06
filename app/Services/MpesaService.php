@@ -18,7 +18,15 @@ class MpesaService
 
     public function __construct()
     {
-        $this->config = MpesaConfig::where('is_active', true)->first();
+        $activeConfig = MpesaConfig::where('is_active', true)->first();
+        
+        if (!$activeConfig) {
+            \Log::error("MpesaService: No active configuration found in database.");
+        } elseif (empty($activeConfig->paying_number)) {
+            \Log::error("MpesaService: Active configuration found, but paying_number is empty. Config ID: " . $activeConfig->id);
+        }
+        
+        $this->config = $activeConfig;
     }
 
     private function formatPhoneNumber($phone)
