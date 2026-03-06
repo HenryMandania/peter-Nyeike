@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Services\MpesaService;
+use App\Models\Purchase;
 use Illuminate\Http\Request;
 
 class PaymentController extends Controller
@@ -17,20 +18,18 @@ class PaymentController extends Controller
 
     public function initiateMobilePayment(Request $request)
     {
-        // 1. Validate incoming data from mobile app
+        // Validate: purchase_id is required, phone is required from the app
         $request->validate([
-            'phone' => 'required|string',
-            'amount' => 'required|numeric',
             'purchase_id' => 'required|exists:purchases,id',
+            'phone'       => 'required|string',
         ]);
 
-        // 2. Trigger the payment service
         try {
-            $result = $this->mpesaService->processPayment(
-                $request->phone, 
-                $request->amount, 
-                $request->purchase_id
-            );
+            // Fetch the model object
+            $purchase = Purchase::findOrFail($request->purchase_id);
+
+            // Pass the model and the customer's phone to the service
+            $result = $this->mpesaService->processPayment($purchase, $request->phone);
 
             return response()->json([
                 'success' => true,

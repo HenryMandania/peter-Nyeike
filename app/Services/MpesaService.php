@@ -16,61 +16,40 @@ class MpesaService
 
     public function __construct()
     {
-        $activeConfig = MpesaConfig::where('is_active', true)->first();
-
-        if (!$activeConfig) {
-            Log::error("MpesaService: No active configuration found in database.");
-        } elseif (empty($activeConfig->paying_number)) {
-            Log::error("MpesaService: Active configuration found, but paying_number is empty. Config ID: " . $activeConfig->id);
-        }
-
-        $this->config = $activeConfig;
+        $this->config = MpesaConfig::where('is_active', true)->first();
     }
 
     private function formatPhoneNumber($phone)
     {
         $phone = preg_replace('/[^0-9]/', '', $phone);
         if (str_starts_with($phone, '0')) return '254' . substr($phone, 1);
-        if (str_starts_with($phone, '7') || str_starts_with($phone, '1')) return '254' . $phone;
+        if (strlen($phone) == 9) return '254' . $phone;
         return $phone;
     }
 
-    public function processPayment($model)
+    public function processPayment($model, $customerPhone)
     {
-        if (!$this->config || !$this->config->paying_number) {
-            return ['status' => false, 'message' => 'M-Pesa configuration or Paying Number missing.'];
+        if (!$this->config) {
+            throw new Exception("M-Pesa configuration missing.");
         }
 
-        return DB::transaction(function () use ($model) {
-            $existing = MpesaTransaction::where('transactionable_id', $model->id)
-                ->where('transactionable_type', get_class($model))
-                ->whereIn('status', ['requested', 'processing'])
-                ->lockForUpdate()
-                ->first();
+        return DB::transaction(function () use ($model, $customerPhone) {
+            // Calculate amount safely
+            $amount = $model->total_amount - ($model->transaction_fee ?? 0);
 
-            if ($existing) {
-                return ['status' => false, 'message' => 'Payment request already pending.'];
+            if ($amount <= 0) {
+                throw new Exception("Invalid transaction amount: " . $amount);
             }
 
-            $amount = match (true) {
-                $model instanceof Purchase => $model->total_amount - ($model->transaction_fee ?? 0),
-                default => $model->total_amount ?? $model->amount ?? null,
-            };
+            $formattedPhone = $this->formatPhoneNumber($customerPhone);
 
-            if (!$amount || $amount <= 0) {
-                return ['status' => false, 'message' => 'Invalid amount.'];
-            }
-
-            $phone = $this->formatPhoneNumber($this->config->paying_number);
-
-            return $this->initiateStkPush($model, $phone, $amount);
+            return $this->initiateStkPush($model, $formattedPhone, $amount);
         });
     }
 
     public function initiateStkPush($model, $phoneNumber, $amount)
     {
         try {
-            // Configure environment for Mpesa SDK
             putenv("MPESA_ENV=" . strtolower($this->config->env));
             putenv("MPESA_CONSUMER_KEY=" . $this->config->consumer_key);
             putenv("MPESA_CONSUMER_SECRET=" . $this->config->consumer_secret);
@@ -78,34 +57,25 @@ class MpesaService
             putenv("MPESA_SHORTCODE=" . $this->config->shortcode);
 
             $mpesa = new Mpesa();
-            $callbackUrl = $this->config->callback_url ?: config('app.url') . '/api/mpesa/callback';
+            $callbackUrl = $this->config->callback_url;
             $reference = strtoupper(substr(class_basename($model), 0, 3)) . '_' . $model->id;
 
             $response = $mpesa->STKPushSimulation(
-                $this->config->shortcode,
-                $this->config->passkey,
-                'CustomerPayBillOnline',
-                $amount,
-                $phoneNumber,
-                $this->config->shortcode,
-                $phoneNumber,
-                $callbackUrl,
-                $reference,
-                "Payment: " . class_basename($model),
-                'Payment'
+                $this->config->shortcode, $this->config->passkey, 'CustomerPayBillOnline',
+                $amount, $phoneNumber, $this->config->shortcode, $phoneNumber,
+                $callbackUrl, $reference, "Payment: " . class_basename($model), 'Payment'
             );
 
             $resData = json_decode($response, true);
 
-            if (!is_array($resData) || !isset($resData['CheckoutRequestID'])) {
-                $error = $resData['errorMessage'] ?? 'Invalid STK push response';
-                throw new Exception($error);
+            if (!isset($resData['CheckoutRequestID'])) {
+                throw new Exception($resData['errorMessage'] ?? 'STK Push failed');
             }
 
+            // Save to DB
             MpesaTransaction::create([
                 'transactionable_id' => $model->id,
                 'transactionable_type' => get_class($model),
-                'type' => strtolower(class_basename($model)),
                 'checkout_request_id' => $resData['CheckoutRequestID'],
                 'amount' => $amount,
                 'phone_number' => $phoneNumber,
@@ -113,23 +83,13 @@ class MpesaService
             ]);
 
             $model->update([
-                'mpesa_checkout_id' => $resData['CheckoutRequestID'],
-                'mpesa_phone' => $phoneNumber,
                 'payment_status' => 'processing',
-                'mpesa_error_message' => null
+                'mpesa_checkout_id' => $resData['CheckoutRequestID']
             ]);
 
-            return ['status' => true, 'CheckoutRequestID' => $resData['CheckoutRequestID']];
-
+            return ['CheckoutRequestID' => $resData['CheckoutRequestID']];
         } catch (Exception $e) {
-            Log::error("STK Push failed: " . $e->getMessage());
-
-            $model->update([
-                'mpesa_error_message' => $e->getMessage(),
-                'payment_status' => 'failed'
-            ]);
-
-            // Throw exception so Laravel queue can retry
+            Log::error("STK Push error: " . $e->getMessage());
             throw $e;
         }
     }
