@@ -120,4 +120,36 @@ class FloatRequestController extends Controller
             'message' => 'Float request rejected successfully.'
         ], 200);
     }
+
+    public function store(Request $request)
+{
+    $user = Auth::user();
+
+    $validated = $request->validate([
+        'amount' => ['required', 'numeric', 'min:1']
+    ]);
+
+    // Get the user's open shift
+    $shift = Shift::where('user_id', $user->id)
+        ->where('status', 'open')
+        ->first();
+
+    if (!$shift) {
+        return response()->json([
+            'message' => 'No open shift found for this user.'
+        ], 422);
+    }
+
+    $floatRequest = FloatRequest::create([
+        'user_id' => $user->id,
+        'shift_id' => $shift->id,
+        'amount' => $validated['amount'],
+        'status' => 'pending'
+    ]);
+
+    return response()->json([
+        'message' => 'Float request submitted successfully.',
+        'data' => $floatRequest
+    ], 201);
+}
 }
