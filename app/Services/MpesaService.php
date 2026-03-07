@@ -21,16 +21,16 @@ class MpesaService
         $token = $this->getAccessToken();
 
         $payload = [
-            "InitiatorName" => config('mpesa.initiator_name'),
+            "InitiatorName"      => config('mpesa.initiator_name'),
             "SecurityCredential" => $this->getSecurityCredential(),
-            "CommandID" => "BusinessPayment",
-            "Amount" => (float) $purchase->total_amount,
-            "PartyA" => config('mpesa.shortcode'),
-            "PartyB" => $this->formatPhone($vendor->phone),
-            "Remarks" => "Payment for P#{$purchase->id}",
-            "QueueTimeOutURL" => config('mpesa.b2c_timeout_url'),
-            "ResultURL" => config('mpesa.b2c_result_url'),
-            "Occasion" => "Purchase Payment"
+            "CommandID"          => "SalaryPayment", // Change this from "BusinessPayment"
+            "Amount"             => (float) $purchase->total_amount,
+            "PartyA"             => config('mpesa.shortcode'),
+            "PartyB"             => $this->formatPhone($vendor->phone), // Must be a valid MSISDN
+            "Remarks"            => "Payment for P#{$purchase->id}",
+            "QueueTimeOutURL"    => config('mpesa.b2c_timeout_url'),
+            "ResultURL"          => config('mpesa.b2c_result_url'),
+            "Occasion"           => "Purchase Payment"
         ];
 
         $response = Http::withToken($token)
