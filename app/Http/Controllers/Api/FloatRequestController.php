@@ -33,68 +33,40 @@ class FloatRequestController extends Controller
      * Middleware 'permission:float-request.approve' should handle authorization.
      */
     public function approve(FloatRequest $floatRequest)
-    {
-        $user = Auth::user();
+{
+    $user = Auth::user();
 
-        // Prevent self approval
-        if ($floatRequest->user_id === $user->id) {
-            return response()->json([
-                'message' => 'You cannot approve your own float request.'
-            ], 403);
+    if ($floatRequest->user_id === $user->id) {
+        return response()->json(['message' => 'You cannot approve your own request.'], 403);
+    }
+
+    // Wrap the result of the transaction
+    $response = DB::transaction(function () use ($floatRequest, $user) {
+        $floatRequest = FloatRequest::where('id', $floatRequest->id)->lockForUpdate()->first();
+
+        if ($floatRequest->status !== 'pending') {
+            return ['status' => 422, 'message' => 'This request has already been processed.'];
         }
 
-        return DB::transaction(function () use ($floatRequest, $user) {
+        $shift = Shift::where('id', $floatRequest->shift_id)->lockForUpdate()->first();
 
-            // Lock row to prevent double approval
-            $floatRequest = FloatRequest::where('id', $floatRequest->id)
-                ->lockForUpdate()
-                ->first();
+        if (!$shift || $shift->status !== 'open') {
+            return ['status' => 422, 'message' => 'Associated shift not found or already closed.'];
+        }
 
-            if (!$floatRequest) {
-                return response()->json([
-                    'message' => 'Float request not found.'
-                ], 404);
-            }
+        $shift->increment('float_balance', $floatRequest->amount);
 
-            if ($floatRequest->status !== 'pending') {
-                return response()->json([
-                    'message' => 'This request has already been processed.'
-                ], 422);
-            }
+        $floatRequest->update([
+            'status' => 'approved',
+            'approved_by' => $user->id,
+            'approved_at' => now(),
+        ]);
 
-            // Validate shift exists and is open
-            $shift = Shift::where('id', $floatRequest->shift_id)
-                ->lockForUpdate()
-                ->first();
+        return ['status' => 200, 'message' => 'Float request approved successfully.', 'data' => $floatRequest->load(['user', 'shift'])];
+    });
 
-            if (!$shift) {
-                return response()->json([
-                    'message' => 'Associated shift not found.'
-                ], 422);
-            }
-
-            if ($shift->status !== 'open') {
-                return response()->json([
-                    'message' => 'The associated shift is already closed.'
-                ], 422);
-            }
-
-            // Update shift balance
-            $shift->increment('float_balance', $floatRequest->amount);
-
-            // Approve request
-            $floatRequest->update([
-                'status' => 'approved',
-                'approved_by' => $user->id,
-                'approved_at' => now(),
-            ]);
-
-            return response()->json([
-                'message' => 'Float request approved successfully.',
-                'data' => $floatRequest->load(['user', 'approver', 'shift'])
-            ], 200);
-        });
-    }
+    return response()->json($response, $response['status']);
+}
 
     /**
      * Reject a float request.
