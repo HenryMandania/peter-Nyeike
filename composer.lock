@@ -4,8 +4,70 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "619e92f10bcac05fa2f34be96b3fc8ed",
+    "content-hash": "4f509dd7935e65db04ac28b7c8bd08f4",
     "packages": [
+        {
+            "name": "akika/laravel-mpesa",
+            "version": "v1.16",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/akikadigital/laravel-mpesa.git",
+                "reference": "d03c9afb2a366d684fd9b7b7148841bf99895e3e"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/akikadigital/laravel-mpesa/zipball/d03c9afb2a366d684fd9b7b7148841bf99895e3e",
+                "reference": "d03c9afb2a366d684fd9b7b7148841bf99895e3e",
+                "shasum": ""
+            },
+            "require": {
+                "guzzlehttp/guzzle": "^7.5",
+                "illuminate/http": "^8.0 || ^9.0 || ^10.0 || ^11.0 || ^12.0",
+                "illuminate/support": "^8.0 || ^9.0 || ^10.0 || ^11.0 || ^12.0",
+                "php": "^8.0"
+            },
+            "type": "library",
+            "extra": {
+                "laravel": {
+                    "aliases": {
+                        "Mpesa": "Akika\\LaravelMpesa\\Facades\\Mpesa"
+                    },
+                    "providers": [
+                        "Akika\\LaravelMpesa\\MpesaServiceProvider"
+                    ]
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "Akika\\LaravelMpesa\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Felix Nyabwari",
+                    "email": "fenicfelix@gmail.com"
+                }
+            ],
+            "description": "A single-tenant Laravel package for integrating Mpesa Daraja API. The package supports Laravel version 5 and above.",
+            "homepage": "https://github.com/Akika-Digital/laravel-mpesa",
+            "keywords": [
+                "Akika",
+                "daraja",
+                "digital",
+                "laravel",
+                "mpesa",
+                "payment"
+            ],
+            "support": {
+                "issues": "https://github.com/akikadigital/laravel-mpesa/issues",
+                "source": "https://github.com/akikadigital/laravel-mpesa/tree/v1.16"
+            },
+            "time": "2025-08-06T14:27:22+00:00"
+        },
         {
             "name": "anourvalar/eloquent-serialize",
             "version": "1.3.5",
@@ -5525,49 +5587,6 @@
                 }
             ],
             "time": "2025-02-25T09:09:36+00:00"
-        },
-        {
-            "name": "safaricom/mpesa",
-            "version": "1.0.8",
-            "source": {
-                "type": "git",
-                "url": "https://github.com/safaricom/mpesa-php-sdk.git",
-                "reference": "c66895dcdec8df1f496e017708c557fc252340c5"
-            },
-            "dist": {
-                "type": "zip",
-                "url": "https://api.github.com/repos/safaricom/mpesa-php-sdk/zipball/c66895dcdec8df1f496e017708c557fc252340c5",
-                "reference": "c66895dcdec8df1f496e017708c557fc252340c5",
-                "shasum": ""
-            },
-            "require": {
-                "php": ">=5.3.0"
-            },
-            "require-dev": {
-                "symfony/dotenv": "^4.3@dev"
-            },
-            "type": "package",
-            "autoload": {
-                "psr-4": {
-                    "Safaricom\\Mpesa\\": "src/"
-                }
-            },
-            "notification-url": "https://packagist.org/downloads/",
-            "license": [
-                "mit"
-            ],
-            "authors": [
-                {
-                    "name": "Moses Nandwa",
-                    "email": "mnandwa@safaricom.co.ke"
-                }
-            ],
-            "description": "A PHP package for Mpesa API",
-            "support": {
-                "issues": "https://github.com/safaricom/mpesa-php-sdk/issues",
-                "source": "https://github.com/safaricom/mpesa-php-sdk/tree/master"
-            },
-            "time": "2019-01-06T16:01:21+00:00"
         },
         {
             "name": "spatie/color",

@@ -8,8 +8,9 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Log;
 
-class ProcessB2B2CCallbackJob implements ShouldQueue
+class ProcessDisbursementCallbackJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
@@ -26,26 +27,27 @@ class ProcessB2B2CCallbackJob implements ShouldQueue
         if (!$result) return;
 
         $conversationID = $result['ConversationID'] ?? '';
-        $resultCode = $result['ResultCode'];
+        $resultCode = $result['ResultCode'] ?? 1;
 
-        // Find the purchase using the ConversationID
         $purchase = Purchase::where('conversation_id', $conversationID)->first();
-        
-        if (!$purchase) return;
+        if (!$purchase) {
+            Log::warning("No matching purchase for ConversationID: {$conversationID}");
+            return;
+        }
 
         if ($resultCode == 0) {
-            // Success: Extract Receipt from ResultParameters
-            $params = $result['ResultParameters']['ResultParameter'] ?? [];
-            $receipt = collect($params)->where('Key', 'ReceiptNumber')->first()['Value'] ?? 'N/A';
+            $params = collect($result['ResultParameters']['ResultParameter'] ?? []);
+            $receipt = $params->firstWhere('Key', 'ReceiptNumber')['Value'] ?? 'N/A';
 
             $purchase->update([
                 'status' => 'paid',
                 'payment_status' => 'paid',
-                'mpesa_receipt_number' => $receipt
+                'mpesa_receipt_number' => $receipt,
             ]);
+            Log::info("Purchase {$purchase->id} paid successfully via M-Pesa");
         } else {
-            // Failure
             $purchase->update(['payment_status' => 'failed']);
+            Log::warning("Purchase {$purchase->id} failed: " . ($result['ResultDesc'] ?? 'Unknown error'));
         }
     }
 }

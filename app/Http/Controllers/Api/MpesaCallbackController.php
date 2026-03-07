@@ -3,27 +3,31 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\ProcessDisbursementCallbackJob;
 use Illuminate\Http\Request;
-use App\Jobs\ProcessMpesaCallbackJob;
 use Illuminate\Support\Facades\Log;
 
 class MpesaCallbackController extends Controller
 {
-
     public function handle(Request $request)
     {
-
         $data = $request->all();
+        Log::info('M-PESA Callback Received', $data);
 
-        Log::info("MPESA CALLBACK",$data);
+        // For B2C/B2B disbursements (Result key present)
+        if (isset($data['Result'])) {
+            ProcessDisbursementCallbackJob::dispatch($data);
+        }
+        // Add elseif for STK if you implement later: isset($data['Body']['stkCallback'])
 
-        ProcessMpesaCallbackJob::dispatch($data);
+        else {
+            Log::warning('Unknown callback format', $data);
+        }
 
+        // Always respond with success to Safaricom
         return response()->json([
-            'ResponseCode'=>'00000000',
-            'ResponseDesc'=>'success'
+            'ResultCode' => 0,
+            'ResultDesc' => 'Accepted'
         ]);
-
     }
-
 }

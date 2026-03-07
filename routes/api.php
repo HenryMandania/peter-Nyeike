@@ -17,7 +17,8 @@ use App\Models\Purchase;
 use App\Jobs\ProcessMpesaCallbackJob;
 use App\Http\Controllers\Api\PaymentController;
 
-Route::post('/mpesa/callback', [MpesaCallbackController::class, 'handle']);
+ 
+Route::post('/mpesa/callback', [MpesaCallbackController::class, 'handle'])->name('mpesa.callback');
 Route::post('/login', [AuthController::class, 'login'])->name('login');
 
 Route::middleware('auth:sanctum')->group(function () {

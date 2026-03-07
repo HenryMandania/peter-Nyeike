@@ -311,13 +311,13 @@ class PurchaseResource extends Resource
                         'status' => 'approved',
                     ])),
 
-                    Tables\Actions\Action::make('pay_vendor')
+                Tables\Actions\Action::make('pay_vendor')
                     ->label('Pay M-Pesa')
                     ->icon('heroicon-o-banknotes')
                     ->color('success')
                     ->requiresConfirmation()
                     ->modalHeading('Confirm Vendor Payment')
-                    ->modalDescription('This will initiate an M-Pesa payment. Ensure the vendor details are correct.')
+                    ->modalDescription('This will send funds via M-Pesa to the vendor. Double-check details.')
                     ->visible(fn ($record) => 
                         $record->status === 'approved' && 
                         str($record->payment_method)->lower()->contains('mpesa') &&
@@ -326,26 +326,27 @@ class PurchaseResource extends Resource
                     ->action(function ($record, MpesaService $service) {
                         try {
                             $response = $service->processVendorPayment($record);
-                            
-                            // Logic to check API success
-                            if ($response) {
+                
+                            // Basic success check (adapt based on actual response keys)
+                            if (isset($response['ConversationID']) || isset($response['ResponseCode']) && $response['ResponseCode'] === '0') {
                                 Notification::make()
                                     ->title('Payment Initiated')
-                                    ->body('The M-Pesa request has been sent to the vendor.')
+                                    ->body('M-Pesa request sent successfully. Awaiting confirmation.')
                                     ->success()
                                     ->send();
                             } else {
-                                throw new \Exception('API did not return a valid response.');
+                                throw new \Exception('Unexpected API response: ' . json_encode($response));
                             }
                         } catch (\Exception $e) {
                             Notification::make()
                                 ->title('Payment Failed')
                                 ->body($e->getMessage())
                                 ->danger()
+                                ->sendToDatabase(auth()->user()) 
                                 ->send();
                         }
                     })
-                    ->after(fn ($livewire) => $livewire->dispatch('refresh')) ,
+                    ->after(fn ($livewire) => $livewire->dispatch('refresh')),
                                         
                 Tables\Actions\Action::make('sell')
                     ->label('Sell')

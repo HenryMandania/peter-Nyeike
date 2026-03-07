@@ -19,13 +19,10 @@ class PaymentController extends Controller
     public function initiateVendorPayment(Request $request)
     {
         $request->validate(['purchase_id' => 'required|exists:purchases,id']);
-        
+
         try {
             $purchase = Purchase::findOrFail($request->purchase_id);
-            $response = $this->mpesaService->processVendorPayment($purchase);
-            
-            // Decodes the string response from the library
-            $result = json_decode($response, true);
+            $result = $this->mpesaService->processVendorPayment($purchase);
 
             return response()->json([
                 'success' => true,
@@ -33,7 +30,10 @@ class PaymentController extends Controller
                 'data' => $result
             ]);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage()
+            ], 500);
         }
     }
 }

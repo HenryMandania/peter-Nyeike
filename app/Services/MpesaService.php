@@ -2,99 +2,86 @@
 
 namespace App\Services;
 
-use Safaricom\Mpesa\Mpesa;
-use App\Models\Purchase;
-use App\Models\MpesaConfig;
 use Exception;
+use Akika\LaravelMpesa\Mpesa;
+use App\Models\Purchase;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Config;
 
 class MpesaService
 {
     protected $mpesa;
-    protected $config;
 
     public function __construct()
     {
         $this->mpesa = new Mpesa();
-        // Fetch active configuration from DB
-        $this->config = MpesaConfig::where('is_active', true)->first();
-        
-        if (!$this->config) {
-            throw new Exception("Active M-Pesa configuration not found in database.");
-        }
-    }
-
-    /**
-     * Dynamically generates the security credential and retrieves config.
-     */
-    private function getCredentials()
-    {
-        if (empty($this->config->initiator_password)) {
-            throw new Exception("Initiator password is not configured.");
-        }
-
-        return [
-            'initiator' => $this->config->initiator_name,
-            'security_credential' => $this->generateSecurityCredential($this->config->initiator_password),
-            'shortcode' => $this->config->shortcode
-        ];
-    }
-
-    /**
-     * Encrypts the initiator password using the cert.cer file.
-     */
-    public function generateSecurityCredential($initiatorPassword)
-    {
-        $certPath = storage_path('app/cert.cer');
-        
-        if (!file_exists($certPath)) {
-            throw new Exception("Certificate file (cert.cer) not found at: {$certPath}");
-        }
-
-        $publicKey = openssl_pkey_get_public(file_get_contents($certPath));
-        
-        if (!$publicKey) {
-            throw new Exception("Invalid certificate file provided.");
-        }
-        
-        // Encrypt the password using PKCS1 padding
-        openssl_public_encrypt($initiatorPassword, $encrypted, $publicKey, OPENSSL_PKCS1_PADDING);
-        
-        // Return base64 encoded string as required by M-Pesa API
-        return base64_encode($encrypted);
     }
 
     public function processVendorPayment(Purchase $purchase)
     {
-        $creds = $this->getCredentials();
+        try {
+            $shortcode = Config::get('mpesa.shortcode'); // your sender shortcode
+            $resultUrl = Config::get('mpesa.result_url');
+            $timeoutUrl = Config::get('mpesa.queue_timeout_url'); // or config('mpesa.timeout_url')
 
-        if ($purchase->vendor_type === 'phone') {
-            return $this->mpesa->b2c(
-                $creds['initiator'],
-                $creds['security_credential'],
-                "BusinessPayment",
-                $purchase->total_amount,
-                $creds['shortcode'],
-                $purchase->vendor_phone, 
-                "Payment for Purchase #" . $purchase->id,
-                $this->config->timeout_url,
-                $this->config->result_url,
-                "" 
-            );
-        } else {
-            return $this->mpesa->b2b(
-                $creds['initiator'],
-                $creds['security_credential'],
-                $purchase->total_amount,
-                $creds['shortcode'], 
-                $purchase->vendor_paybill, 
-                "Payment for Purchase #" . $purchase->id,
-                $this->config->timeout_url,
-                $this->config->result_url,
-                $purchase->id, 
-                "BusinessPayBill",
-                "Shortcode",
-                "Shortcode"
-            );
+            $phone = $this->formatPhone($purchase->vendor_phone ?? '');
+
+            if ($purchase->vendor_type === 'phone' && $phone) {
+                // B2C to phone (Business to Customer)
+                $response = $this->mpesa->b2cTransaction(
+                    null,                               // originatorConversationId (null for new)
+                    'BusinessPayment',                  // commandID (or SalaryPayment, PromotionPayment)
+                    $phone,                             // msisdn / recipient phone
+                    $purchase->total_amount,            // amount
+                    "Payment for Purchase #{$purchase->id}", // remarks
+                    ''                                  // occasion (optional)
+                );
+            } else {
+                // B2B to PayBill/Till (choose based on vendor type)
+                // For PayBill → use b2bPaybill
+                // For Till/BuyGoods → use b2bBuyGoods
+                // Here assuming PayBill; adjust if vendor has a type field for BuyGoods
+                $response = $this->mpesa->b2bPaybill(
+                    $purchase->vendor_paybill,          // destShortcode (receiver)
+                    $purchase->total_amount,            // amount
+                    "Payment for Purchase #{$purchase->id}", // remarks
+                    (string) $purchase->id,             // accountNumber (up to 13 chars)
+                    $resultUrl,                         // resultUrl
+                    $timeoutUrl,                        // timeoutUrl
+                    null                                // requester (optional)
+                );
+            }
+
+            // Package returns Guzzle Response object
+            $result = $response->json();  // Get JSON body as array
+
+            Log::info('M-Pesa Vendor Payment Initiated', [
+                'purchase_id' => $purchase->id,
+                'type' => $purchase->vendor_type,
+                'response' => $result
+            ]);
+
+            if (isset($result['ConversationID'])) {
+                $purchase->update(['conversation_id' => $result['ConversationID']]);
+            }
+
+            return $result;
+
+        } catch (Exception $e) {
+            Log::error('M-Pesa Vendor Payment Failed', ['error' => $e->getMessage()]);
+            throw $e;
         }
+    }
+
+    private function formatPhone($phone)
+    {
+        if (!$phone) return null;
+        $phone = preg_replace('/[^0-9]/', '', $phone);
+        if (str_starts_with($phone, '0')) {
+            $phone = '254' . substr($phone, 1);
+        } elseif (!str_starts_with($phone, '254')) {
+            $phone = '254' . $phone;
+        }
+        return $phone;
     }
 }
