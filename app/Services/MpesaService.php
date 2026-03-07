@@ -3,150 +3,75 @@
 namespace App\Services;
 
 use Exception;
-use Akika\LaravelMpesa\Mpesa;
 use App\Models\Purchase;
-use App\Models\Vendor; // Assuming your Vendor model is here
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Http;
 
 class MpesaService
 {
-    protected $mpesa;
-
-    public function __construct()
-    {
-        $this->mpesa = new Mpesa();
-
-        Log::debug('M-Pesa Service Initialized', [
-            'environment' => config('mpesa.env', 'unknown'),
-            'shortcode'   => config('mpesa.shortcode'),
-            'initiator'   => config('mpesa.initiator_name'),
-        ]);
-    }
-
     public function processVendorPayment(Purchase $purchase)
     {
-        Log::info('Starting vendor payment process', [
-            'purchase_id'    => $purchase->id,
-            'vendor_id'      => $purchase->vendor_id,
-            'vendor_type'    => $purchase->vendor_type,
-            'amount'         => $purchase->total_amount,
-        ]);
+        Log::info('Initiating manual B2C payment', ['purchase_id' => $purchase->id]);
 
-        try {
-            // Fetch vendor details using vendor_id relationship
-            $vendor = $purchase->vendor; // Assumes you have a belongsTo relationship: vendor() in Purchase model
-            // If not, use: $vendor = Vendor::find($purchase->vendor_id);
+        $vendor = $purchase->vendor;
+        $phone = $this->formatPhone($vendor->phone ?? '');
+        $amount = (float) $purchase->total_amount;
 
-            if (!$vendor) {
-                throw new Exception("Vendor not found for purchase #{$purchase->id} (vendor_id: {$purchase->vendor_id})");
-            }
+        // 1. Get Access Token
+        $token = $this->getAccessToken();
 
-            Log::debug('Vendor fetched', [
-                'vendor_id'   => $vendor->id,
-                'phone'       => $vendor->phone ?? 'N/A',
-                'paybill'     => $vendor->paybill ?? 'N/A',
-            ]);
+        // 2. Prepare Payload
+        // Note: Safaricom B2C requires specific fields; if one is missing/wrong, it returns "Invalid ResultURL"
+        $payload = [
+            "InitiatorName" => config('mpesa.initiator_name'),
+            "SecurityCredential" => $this->getSecurityCredential(),
+            "CommandID" => "BusinessPayment",
+            "Amount" => $amount,
+            "PartyA" => config('mpesa.shortcode'),
+            "PartyB" => $phone,
+            "Remarks" => "Payment for P#{$purchase->id}",
+            "QueueTimeOutURL" => config('mpesa.b2c_timeout_url'),
+            "ResultURL" => config('mpesa.b2c_result_url'),
+            "Occasion" => "Purchase Payment"
+        ];
 
-            // Determine payment type (fallback to phone if vendor_type is null)
-            $vendorType = $purchase->vendor_type ?? 'phone'; // You can make this stricter if needed
+        // 3. Execute Request
+        $response = Http::withToken($token)
+            ->post('https://sandbox.safaricom.co.ke/mpesa/b2c/v1/paymentrequest', $payload);
 
-            $phone = $this->formatPhone($vendor->phone ?? '');
-            $paybill = $vendor->paybill ?? null;
+        $result = $response->json();
+        Log::debug('M-Pesa API Response', ['result' => $result]);
 
-            $resultUrl   = 'https://rosalee-curious-earnest.ngrok-free.dev/api/mpesa/callback';
-            $timeoutUrl  = 'https://rosalee-curious-earnest.ngrok-free.dev/api/mpesa/callback';
-
-            Log::debug('Prepared payment parameters', [
-                'vendor_type'   => $vendorType,
-                'phone'         => $phone,
-                'paybill'       => $paybill,
-                'result_url'    => $resultUrl,
-                'timeout_url'   => $timeoutUrl,
-                'amount'        => $purchase->total_amount,
-            ]);
-
-            if ($vendorType === 'phone' && $phone) {
-                Log::info('Initiating B2C payment', [
-                    'phone'  => $phone,
-                    'amount' => $purchase->total_amount,
-                ]);
-
-                $response = $this->mpesa->b2cTransaction(
-                    null,                               // originatorConversationId
-                    'BusinessPayment',                  // commandID
-                    $phone,                             // recipient phone
-                    $purchase->total_amount,            // amount
-                    "Payment for Purchase #{$purchase->id}", // remarks
-                    ''                                  // occasion
-                );
-            } else {
-                if (!$paybill) {
-                    throw new Exception("Vendor PayBill number is required for B2B payments (vendor_id: {$vendor->id})");
-                }
-
-                Log::info('Initiating B2B payment', [
-                    'paybill' => $paybill,
-                    'amount'  => $purchase->total_amount,
-                ]);
-
-                $response = $this->mpesa->b2bPaybill(
-                    $paybill,                           // destShortcode (receiver)
-                    $purchase->total_amount,            // amount
-                    "Payment for Purchase #{$purchase->id}", // remarks
-                    (string) $purchase->id,             // accountNumber
-                    $resultUrl,                         // resultUrl (hardcoded for test)
-                    $timeoutUrl,                        // timeoutUrl (hardcoded for test)
-                    null                                // requester (optional)
-                );
-            }
-
-            // Log raw response
-            Log::debug('Raw response from M-Pesa package', [
-                'status'     => $response->status(),
-                'body_raw'   => $response->body(),
-            ]);
-
-            $result = $response->json() ?? [];
-
-            Log::info('M-Pesa Vendor Payment Response', [
-                'purchase_id' => $purchase->id,
-                'type'        => $vendorType,
-                'response'    => $result,
-            ]);
-
-            if (isset($result['ConversationID'])) {
-                Log::info('ConversationID saved', ['conversation_id' => $result['ConversationID']]);
-                $purchase->update(['conversation_id' => $result['ConversationID']]);
-            } else {
-                Log::warning('No ConversationID in response', ['response' => $result]);
-            }
-
-            return $result;
-
-        } catch (Exception $e) {
-            Log::error('M-Pesa Vendor Payment Failed', [
-                'purchase_id' => $purchase->id,
-                'vendor_id'   => $purchase->vendor_id ?? 'N/A',
-                'error'       => $e->getMessage(),
-                'trace'       => $e->getTraceAsString(),
-            ]);
-            throw $e;
+        if ($response->failed() || (isset($result['ResponseCode']) && $result['ResponseCode'] !== '0')) {
+            throw new Exception("M-Pesa API Error: " . ($result['ResponseDescription'] ?? 'Unknown error'));
         }
+
+        if (isset($result['ConversationID'])) {
+            $purchase->update(['conversation_id' => $result['ConversationID']]);
+        }
+
+        return $result;
+    }
+
+    private function getAccessToken()
+    {
+        $response = Http::withBasicAuth(config('mpesa.consumer_key'), config('mpesa.consumer_secret'))
+            ->get('https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials');
+        
+        return $response->json('access_token');
+    }
+
+    private function getSecurityCredential()
+    {
+        // Must be the public certificate provided in the M-Pesa Developer portal
+        $pubKey = file_get_contents(storage_path('app/cert/sandbox_cert.cer'));
+        openssl_public_encrypt(config('mpesa.initiator_password'), $encrypted, $pubKey, OPENSSL_PKCS1_PADDING);
+        return base64_encode($encrypted);
     }
 
     private function formatPhone($phone)
     {
-        if (!$phone) return null;
-
         $phone = preg_replace('/[^0-9]/', '', $phone);
-        if (str_starts_with($phone, '0')) {
-            $phone = '254' . substr($phone, 1);
-        } elseif (!str_starts_with($phone, '254')) {
-            $phone = '254' . $phone;
-        }
-
-        Log::debug('Formatted phone number', ['original' => $phone, 'formatted' => $phone]);
-
-        return $phone;
+        return str_starts_with($phone, '254') ? $phone : '254' . ltrim($phone, '0');
     }
 }

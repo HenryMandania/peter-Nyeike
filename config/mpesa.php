@@ -37,8 +37,9 @@ return [
     'transaction_status_timeout_url' => env('MPESA_TRANSACTION_STATUS_TIMEOUT_URL'),
 
     // ------------- b2c urls -------------
-    'b2c_timeout_url' => env('MPESA_B2C_TIMEOUT_URL'),
-    'b2c_result_url' => env('MPESA_B2C_RESULT_URL'),
+// ------------- b2c urls -------------
+    'b2c_timeout_url' => 'https://rosalee-curious-earnest.ngrok-free.dev/api/mpesa/callback',
+    'b2c_result_url' => 'https://rosalee-curious-earnest.ngrok-free.dev/api/mpesa/callback',
     'b2c_topup_timeout_url' => env('MPESA_B2C_TOPUP_TIMEOUT_URL'),
     'b2c_topup_result_url' => env('MPESA_B2C_TOPUP_RESULT_URL'),
 
