@@ -24,6 +24,8 @@ class MpesaTransaction extends Model
     protected $casts = [
         'raw_callback_payload' => 'array',
         'completed_at' => 'datetime',
+        'metadata' => 'array',
+        
     ];
 
     public function transactionable(): MorphTo

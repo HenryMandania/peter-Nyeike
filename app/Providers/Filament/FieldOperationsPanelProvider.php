@@ -64,8 +64,9 @@ class FieldOperationsPanelProvider extends PanelProvider
             ])
             ->navigationGroups([
                 NavigationGroup::make()->label('Shifts'),
-                NavigationGroup::make()->label('Administration'),
                 NavigationGroup::make()->label('Accounts'),
+                NavigationGroup::make()->label('Administration'),
+                
             ])
             ->pages([
                 Dashboard::class,

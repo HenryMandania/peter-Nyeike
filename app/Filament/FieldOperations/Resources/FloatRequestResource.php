@@ -69,6 +69,7 @@ class FloatRequestResource extends Resource
     public static function table(Table $table): Table
     {
         return $table
+            ->defaultSort('created_at', 'desc')
             ->columns([
                 TextColumn::make('user.name')
                     ->label('Requested By')
@@ -88,7 +89,7 @@ class FloatRequestResource extends Resource
                     ->label('Approved By'),
                 TextColumn::make('created_at')
                     ->dateTime()
-                    ->sortable(),
+                    ->sortable(desc),
             ])
 
             ->headerActions([

@@ -10,6 +10,7 @@
         "akika/laravel-mpesa": "^1.16",
         "bezhansalleh/filament-shield": "^3.2",
         "filament/filament": "3.3.43",
+        "flowframe/laravel-trend": "^0.4.0",
         "laravel/framework": "^12.0",
         "laravel/sanctum": "^4.0",
         "laravel/tinker": "^2.10.1",

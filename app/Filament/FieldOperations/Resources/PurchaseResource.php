@@ -30,6 +30,7 @@ use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Filters\Filter;
 use Filament\Forms\Components\DatePicker;
 use App\Services\MpesaService;
+use App\Models\Sale;
 
 class PurchaseResource extends Resource
 {
@@ -165,6 +166,19 @@ class PurchaseResource extends Resource
                 ->money('KES')
                 ->color('gray'),
 
+            TextColumn::make('fruit_cost')
+                ->label('Fruit Cost')
+                ->money('KES')
+                ->color('warning')
+                ->summarize(Sum::make()->label('Total Fruit Cost')),
+
+            TextColumn::make('approver.name')
+                ->label('Purchase Approval')
+                ->icon(fn ($record) => $record->approved_by ? 'heroicon-m-check-circle' : null)
+                ->iconColor('success')
+                ->color(fn ($record) => $record->approved_by ? 'success' : 'gray')
+                ->placeholder('Waiting...'),
+
             TextColumn::make('transaction_fee')
                 ->label('Trans. Fee')
                 ->money('KES')
@@ -176,13 +190,6 @@ class PurchaseResource extends Resource
                 ->color('info')
                 ->weight('bold')
                 ->summarize(Sum::make()->label('Grand Cost')),
-
-            TextColumn::make('approver.name')
-                ->label('Approved By')
-                ->icon(fn ($record) => $record->approved_by ? 'heroicon-m-check-circle' : null)
-                ->iconColor('success')
-                ->color(fn ($record) => $record->approved_by ? 'success' : 'gray')
-                ->placeholder('Waiting...'),
 
             // --- SELLING SIDE (PRICE & PROFIT) ---
             TextColumn::make('selling_unit_price')
@@ -348,39 +355,75 @@ class PurchaseResource extends Resource
                     })
                     ->after(fn ($livewire) => $livewire->dispatch('refresh')),
                                         
-                Tables\Actions\Action::make('sell')
-                    ->label('Sell')
-                    ->icon('heroicon-m-banknotes')
-                    ->color('warning')
-                    ->visible(fn (Purchase $record) => $record->status === 'approved' && !$record->is_sold)
-                    ->form([
-                        Forms\Components\TextInput::make('selling_unit_price')
-                            ->label('Selling Price per Unit')
-                            ->numeric()
-                            ->prefix('KES')
-                            ->required()
-                            ->rules([
-                                fn (Purchase $record): Closure => function (string $attribute, $value, Closure $fail) use ($record) {
-                                    $sellingPrice = floatval($value);
-                                    $costPrice = floatval($record->unit_price);
-            
-                                    if ($sellingPrice < $costPrice) {
-                                        $fail("Selling price (KES " . number_format($sellingPrice, 2) . ") cannot be lower than the cost price (KES " . number_format($costPrice, 2) . ").");
-                                    }
-                                },
-                            ]),
-                    ])
-                    ->action(function (Purchase $record, array $data): void {
-                        $totalSales = $record->quantity * floatval($data['selling_unit_price']);
-                        
-                        $record->update([
-                            'selling_unit_price' => $data['selling_unit_price'],
-                            'sales_amount' => $totalSales,
-                            'gross_profit' => $totalSales - $record->total_amount,
-                            'is_sold' => true,
-                            'sold_at' => now(),
-                            'sold_by' => auth()->id(),
-                        ]);
+                    Tables\Actions\Action::make('sell')
+    ->label('Sell')
+    ->icon('heroicon-m-banknotes')
+    ->color('warning')
+    ->visible(fn (Purchase $record) => $record->status === 'approved' && !$record->is_sold)
+    ->form([
+        Forms\Components\TextInput::make('selling_unit_price')
+            ->label('Selling Price per Unit')
+            ->numeric()
+            ->prefix('KES')
+            ->required()
+            ->rules([
+                fn (Purchase $record): Closure => function (string $attribute, $value, Closure $fail) use ($record) {
+                    $sellingPrice = floatval($value);
+                    $costPrice = floatval($record->unit_price);
+
+                    if ($sellingPrice < $costPrice) {
+                        $fail("Selling price (KES " . number_format($sellingPrice, 2) . ") cannot be lower than the cost price (KES " . number_format($costPrice, 2) . ").");
+                    }
+                },
+            ]),
+    ])
+    ->action(function (Purchase $record, array $data): void {
+
+        // 🔹 Load shift relation to ensure company_id is accessible
+        $record->load('shift');
+
+        if (!$record->shift) {
+            throw new \Exception("Cannot sell: Purchase does not belong to a shift. Sale not created.");
+        }
+
+        $sellingPrice = floatval($data['selling_unit_price']);
+        $totalSales = $record->quantity * $sellingPrice;
+        $profit = $totalSales - $record->total_amount;
+
+        \DB::transaction(function () use ($record, $sellingPrice, $totalSales, $profit) {
+            // 1️⃣ Update the purchase
+            $record->update([
+                'selling_unit_price' => $sellingPrice,
+                'sales_amount' => $totalSales,
+                'gross_profit' => $profit,
+                'is_sold' => true,
+                'sold_at' => now(),
+                'sold_by' => auth()->id(),
+            ]);
+
+            // 2️⃣ Create the sale
+            Sale::create([
+                'purchase_id' => $record->id,
+                'quantity' => $record->quantity,
+                'selling_unit_price' => $sellingPrice,
+                'sales_amount' => $totalSales,
+                'cost_amount' => $record->total_amount,
+                'profit' => $profit,
+                'sold_by' => auth()->id(), 
+                'sold_by' => auth()->id(),
+                'company_id' => $record->shift->company_id, // now guaranteed
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        });
+   
+                
+                        // 3️⃣ Notify user
+                        Notification::make()
+                            ->title('Sale Created')
+                            ->body('The sale record has been created automatically.')
+                            ->success()
+                            ->send();
                     }),
             ])
         ->bulkActions([
@@ -398,8 +441,24 @@ class PurchaseResource extends Resource
                         'approved_by' => auth()->id(),
                         'notes' => $data['reason'],
                     ])),
+
+                Tables\Actions\BulkAction::make('bulk_approve')
+                    ->label('Approve Selected')
+                    ->icon('heroicon-m-check-badge')
+                    ->color('success')
+                    ->requiresConfirmation()
+                    ->action(fn ($records) => $records->each->update([
+                        'status' => 'approved',
+                        'approved_by' => auth()->id(),
+                        'approved_at' => now(),
+                    ])),
+
+
             ]),
         ]);
+
+
+        
     }
    
     public static function canEdit(\Illuminate\Database\Eloquent\Model $record): bool
