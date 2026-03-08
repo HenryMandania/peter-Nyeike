@@ -13,6 +13,8 @@ class ExpenseOverview extends BaseWidget
 {
     use InteractsWithPageTable;
 
+    public array $tableColumnSearches = [];
+
     protected static ?string $pollingInterval = '15s';
 
     protected function getTablePage(): string

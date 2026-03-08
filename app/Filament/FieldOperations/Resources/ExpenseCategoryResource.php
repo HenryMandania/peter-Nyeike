@@ -3,6 +3,7 @@
 namespace App\Filament\FieldOperations\Resources;
 
 use App\Models\ExpenseCategory;
+use Filament\Tables\Filters\SelectFilter;
 use Filament\Forms;
 use Filament\Forms\Form; 
 use Filament\Forms\Components\TextInput;
@@ -57,8 +58,14 @@ class ExpenseCategoryResource extends Resource
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
-                //
+                SelectFilter::make('name')
+                    ->label('Company Name')                    
+                    ->searchable()
+                    ->preload()
+                    ->indicator('Company Name'), 
             ])
+
+
             ->actions([   
                 ViewAction::make(),
                 EditAction::make(),

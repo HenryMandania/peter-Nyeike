@@ -77,7 +77,9 @@ class CompanyPaymentResource extends Resource
                 SelectFilter::make('company_id')
                     ->label('Company')
                     ->relationship('company', 'name')
-                    ->searchable(),
+                    ->searchable()
+                    ->indicator('Company'), // Displays "Company: [Name]" in the ribbon
+            
                 Filter::make('payment_date')
                     ->form([
                         DatePicker::make('from')->label('Date From'),
@@ -85,7 +87,20 @@ class CompanyPaymentResource extends Resource
                     ])
                     ->query(fn ($query, array $data) => $query
                         ->when($data['from'] ?? null, fn ($q, $date) => $q->whereDate('payment_date', '>=', $date))
-                        ->when($data['until'] ?? null, fn ($q, $date) => $q->whereDate('payment_date', '<=', $date))),
+                        ->when($data['until'] ?? null, fn ($q, $date) => $q->whereDate('payment_date', '<=', $date))
+                    )
+                    ->indicateUsing(function (array $data): array {
+                        $indicators = [];
+                        
+                        if ($data['from'] ?? null) {
+                            $indicators[] = 'From: ' . \Carbon\Carbon::parse($data['from'])->toFormattedDateString();
+                        }
+                        if ($data['until'] ?? null) {
+                            $indicators[] = 'Until: ' . \Carbon\Carbon::parse($data['until'])->toFormattedDateString();
+                        }
+                        
+                        return $indicators; // These will appear as individual pills in the ribbon
+                    }),
             ])
             ->actions([
                 Tables\Actions\ViewAction::make(),

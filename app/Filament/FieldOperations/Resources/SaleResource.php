@@ -137,28 +137,7 @@ class SaleResource extends Resource
         ])
         ->defaultSort('created_at','desc')
         ->filters([
-            // Supplier Filter
-            SelectFilter::make('purchase.vendor_id')
-                ->label('Supplier')
-                ->relationship('purchase.vendor', 'name')
-                ->searchable()
-                ->preload(),
-
-            // Item Filter
-            SelectFilter::make('purchase.item_id')
-                ->label('Item')
-                ->relationship('purchase.item', 'name')
-                ->searchable()
-                ->preload(),
-
-            // Company Filter
-            SelectFilter::make('company_id')
-                ->label('Company')
-                ->relationship('company', 'name')
-                ->searchable()
-                ->preload(),
-
-            // Date Range Filter
+            // 1. Date Range Filter (First priority)
             Filter::make('created_at')
                 ->label('Date Range')
                 ->form([
@@ -167,9 +146,39 @@ class SaleResource extends Resource
                 ])
                 ->query(function ($query, array $data) {
                     return $query
-                        ->when($data['from'] ?? null, fn($q) => $q->whereDate('created_at', '>=', $data['from']))
-                        ->when($data['until'] ?? null, fn($q) => $q->whereDate('created_at', '<=', $data['until']));
+                        ->when($data['from'] ?? null, fn($q, $date) => $q->whereDate('created_at', '>=', $date))
+                        ->when($data['until'] ?? null, fn($q, $date) => $q->whereDate('created_at', '<=', $date));
+                })
+                ->indicateUsing(function (array $data): array {
+                    $indicators = [];
+                    if ($data['from'] ?? null) $indicators['from'] = 'From: ' . $data['from'];
+                    if ($data['until'] ?? null) $indicators['until'] = 'Until: ' . $data['until'];
+                    return $indicators;
                 }),
+        
+            // 2. Supplier Filter
+            SelectFilter::make('purchase.vendor_id')
+                ->label('Supplier')
+                ->relationship('purchase.vendor', 'name')
+                ->searchable()
+                ->preload()
+                ->indicator('Supplier'),
+        
+            // 3. Item Filter
+            SelectFilter::make('purchase.item_id')
+                ->label('Item')
+                ->relationship('purchase.item', 'name')
+                ->searchable()
+                ->preload()
+                ->indicator('Item'),
+        
+            // 4. Company Filter
+            SelectFilter::make('company_id')
+                ->label('Company')
+                ->relationship('company', 'name')
+                ->searchable()
+                ->preload()
+                ->indicator('Company'),
         ])
 
         ->headerActions([

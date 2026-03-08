@@ -3,6 +3,8 @@
 namespace App\Filament\FieldOperations\Resources;
 
 use App\Filament\FieldOperations\Resources\CompanyResource\Pages;
+use Filament\Tables\Filters\Filter;  
+use Filament\Forms\Components\DatePicker;  
 use App\Models\Company;
 use Filament\Forms;
 use Filament\Forms\Form;
@@ -54,7 +56,37 @@ class CompanyResource extends Resource
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
-            ->filters([])
+            ->filters([
+                // Simple text filter for location
+                Tables\Filters\SelectFilter::make('location')
+                    ->options(
+                        Company::query()->pluck('location', 'location')->toArray()
+                    )
+                    ->searchable()
+                    ->indicator('Location'),
+    
+                // Date range filter for creation date
+                Filter::make('created_at')
+                    ->form([
+                        DatePicker::make('created_from')->label('Created From'),
+                        DatePicker::make('created_until')->label('Created Until'),
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        return $query
+                            ->when($data['created_from'], fn ($query, $date) => $query->whereDate('created_at', '>=', $date))
+                            ->when($data['created_until'], fn ($query, $date) => $query->whereDate('created_at', '<=', $date));
+                    })
+                    ->indicateUsing(function (array $data): array {
+                        $indicators = [];
+                        if ($data['created_from'] ?? null) {
+                            $indicators[] = 'From: ' . \Carbon\Carbon::parse($data['created_from'])->toFormattedDateString();
+                        }
+                        if ($data['created_until'] ?? null) {
+                            $indicators[] = 'Until: ' . \Carbon\Carbon::parse($data['created_until'])->toFormattedDateString();
+                        }
+                        return $indicators;
+                    }),
+            ])
             ->actions([
                 Tables\Actions\ViewAction::make(),
                 Tables\Actions\EditAction::make(),

@@ -190,24 +190,27 @@ class ShiftResource extends Resource
             ->filters([
                 SelectFilter::make('company_id')
                     ->label('Filter by Company')
-                    ->relationship('company', 'name')  
+                    ->relationship('company', 'name')
                     ->searchable()
                     ->preload()
-                    ->indicator('Company'),
+                    ->indicator('Company'), // Already present
+            
                 SelectFilter::make('user_id')
                     ->label('Operator')
                     ->relationship('user', 'name')
                     ->searchable()
-                    ->preload(),
-
+                    ->preload()
+                    ->indicator('Operator'), // Added
+            
                 SelectFilter::make('status')
                     ->options([
                         'open' => 'Open',
                         'closed' => 'Closed',
-                    ]),
-
+                    ])
+                    ->indicator('Status'), // Added
+            
                 Filter::make('opened_at')
-                    ->form([  
+                    ->form([
                         DatePicker::make('from')->label('From Date'),
                         DatePicker::make('until')->label('To Date'),
                     ])
@@ -215,6 +218,16 @@ class ShiftResource extends Resource
                         return $query
                             ->when($data['from'], fn (Builder $query, $date) => $query->whereDate('opened_at', '>=', $date))
                             ->when($data['until'], fn (Builder $query, $date) => $query->whereDate('opened_at', '<=', $date));
+                    })
+                    ->indicateUsing(function (array $data): array {
+                        $indicators = [];
+                        if ($data['from'] ?? null) {
+                            $indicators['from'] = 'From: ' . \Carbon\Carbon::parse($data['from'])->toFormattedDateString();
+                        }
+                        if ($data['until'] ?? null) {
+                            $indicators['until'] = 'Until: ' . \Carbon\Carbon::parse($data['until'])->toFormattedDateString();
+                        }
+                        return $indicators; // Dynamic indicators for the date range
                     }),
             ])
 

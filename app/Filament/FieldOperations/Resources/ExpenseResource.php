@@ -10,6 +10,7 @@ use Filament\Forms\Form;
 use Filament\Forms\Components\Section;
 use Filament\Forms\Components\Placeholder;
 use Filament\Forms\Components\Select;
+use pxlrbt\FilamentExcel\Actions\Tables\ExportAction;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\Hidden;
@@ -35,11 +36,10 @@ class ExpenseResource extends Resource
     public static function form(Form $form): Form
     {
         return $form
-            ->schema([ // Changed from components()
+            ->schema([
                 Section::make('Record Expense')
                     ->description('Expense will be deducted from your active shift balance.')
                     ->schema([
-                        // Balance Preview
                         Placeholder::make('current_balance')
                             ->label('Current Shift Balance')
                             ->content(function (BalanceService $service) {
@@ -61,7 +61,6 @@ class ExpenseResource extends Resource
                             ->numeric()
                             ->prefix('KES')
                             ->live(onBlur: true)
-                            // SOFT FAIL LOGIC
                             ->rules([
                                 fn (BalanceService $service): Closure => function (string $attribute, $value, Closure $fail) use ($service) {
                                     $activeShift = Shift::where('user_id', Auth::id())->where('status', 'open')->first();
@@ -82,7 +81,6 @@ class ExpenseResource extends Resource
                             ->placeholder('What was this expense for?')
                             ->columnSpanFull(),
                         
-                        // Hidden fields handled automatically
                         Hidden::make('created_by')
                             ->default(Auth::id()),
                             
@@ -122,11 +120,24 @@ class ExpenseResource extends Resource
             ->filters([
                 SelectFilter::make('expense_category_id')
                     ->label('Category')
-                    ->relationship('category', 'name'),
+                    ->relationship('category', 'name')
+                    ->searchable()
+                    ->preload()
+                    ->indicator('Category'),
             ])
-            ->actions([ // Changed from recordActions() to actions()
+            ->actions([ 
                 EditAction::make(),
-               
+            ])
+            ->headerActions([               
+                ExportAction::make()
+                    ->label('Export to Excel')
+                    ->icon('heroicon-m-arrow-down-tray')
+                    ->color('success'),
+            ])
+            ->bulkActions([
+                Tables\Actions\BulkActionGroup::make([
+                    Tables\Actions\DeleteBulkAction::make(),
+                ]),
             ]);
     }
 

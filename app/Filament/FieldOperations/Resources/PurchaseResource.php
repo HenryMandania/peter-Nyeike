@@ -26,9 +26,9 @@ use Filament\Tables\Table;
 use Filament\Tables\Columns\Summarizers\Sum;
 use Illuminate\Support\Facades\Auth;
 use Closure;
-use Filament\Tables\Filters\SelectFilter;
-use Filament\Tables\Filters\Filter;
-use Filament\Forms\Components\DatePicker;
+use Filament\Tables\Filters\Filter;  
+use Filament\Tables\Filters\SelectFilter; 
+use Filament\Forms\Components\DatePicker; 
 use App\Services\MpesaService;
 use App\Models\Sale;
 
@@ -250,38 +250,48 @@ class PurchaseResource extends Resource
                 ])
                 ->query(function ($query, array $data) {
                     return $query
-                        ->when($data['from'], fn ($q) => $q->whereDate('created_at', '>=', $data['from']))
-                        ->when($data['until'], fn ($q) => $q->whereDate('created_at', '<=', $data['until']));
+                        ->when($data['from'], fn ($q, $date) => $q->whereDate('created_at', '>=', $date))
+                        ->when($data['until'], fn ($q, $date) => $q->whereDate('created_at', '<=', $date));
+                })
+                ->indicateUsing(function (array $data): array {
+                    $indicators = [];
+                    if ($data['from'] ?? null) $indicators['from'] = 'From: ' . $data['from'];
+                    if ($data['until'] ?? null) $indicators['until'] = 'Until: ' . $data['until'];
+                    return $indicators;
                 }),
-
+        
             // 2. Item Filter
             SelectFilter::make('item_id')
                 ->label('Item')
                 ->relationship('item', 'name')
                 ->searchable()
-                ->preload(),
-
+                ->preload()
+                ->indicator('Item'), // Added Indicator
+        
             // 3. Supplier Filter
             SelectFilter::make('vendor_id')
                 ->label('Supplier')
                 ->relationship('vendor', 'name')
                 ->searchable()
-                ->preload(),
-
+                ->preload()
+                ->indicator('Supplier'), // Added Indicator
+        
             // 4. Company Operator Filter
             SelectFilter::make('created_by')
                 ->label('Operator')
-                ->relationship('operator', 'name') // Assumes relationship 'operator' exists in Purchase model
+                ->relationship('operator', 'name')
                 ->searchable()
-                ->preload(),
-
+                ->preload()
+                ->indicator('Operator'), // Added Indicator
+        
             // 5. Status Filter
             SelectFilter::make('status')
                 ->options([
                     'pending' => 'Pending',
                     'approved' => 'Approved',
                     'rejected' => 'Rejected',
-                ]),
+                ])
+                ->indicator('Status'), // Added Indicator
         ])
         ->headerActions([
             // Top Right Export Button

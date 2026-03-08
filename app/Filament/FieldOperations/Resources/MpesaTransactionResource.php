@@ -195,8 +195,9 @@ class MpesaTransactionResource extends Resource
                         'expense' => 'Expense',
                         'float_request' => 'Float Request',
                     ])
-                    ->label('Transaction Type'),
-
+                    ->label('Transaction Type')
+                    ->indicator('Type'), // Added Indicator
+            
                 SelectFilter::make('status')
                     ->options([
                         'requested' => 'Requested',
@@ -204,30 +205,34 @@ class MpesaTransactionResource extends Resource
                         'failed' => 'Failed',
                         'cancelled' => 'Cancelled',
                     ])
-                    ->label('Status'),
-
+                    ->label('Status')
+                    ->indicator('Status'), // Added Indicator
+            
                 Filter::make('created_at')
                     ->form([
-                        Forms\Components\DatePicker::make('created_from')
-                            ->label('From'),
-                        Forms\Components\DatePicker::make('created_until')
-                            ->label('Until'),
+                        Forms\Components\DatePicker::make('created_from')->label('From'),
+                        Forms\Components\DatePicker::make('created_until')->label('Until'),
                     ])
                     ->query(function (Builder $query, array $data): Builder {
                         return $query
-                            ->when(
-                                $data['created_from'],
-                                fn (Builder $query, $date): Builder => $query->whereDate('created_at', '>=', $date),
-                            )
-                            ->when(
-                                $data['created_until'],
-                                fn (Builder $query, $date): Builder => $query->whereDate('created_at', '<=', $date),
-                            );
+                            ->when($data['created_from'], fn ($query, $date) => $query->whereDate('created_at', '>=', $date))
+                            ->when($data['created_until'], fn ($query, $date) => $query->whereDate('created_at', '<=', $date));
+                    })
+                    ->indicateUsing(function (array $data): array {
+                        $indicators = [];
+                        if ($data['created_from'] ?? null) {
+                            $indicators['created_from'] = 'From: ' . $data['created_from'];
+                        }
+                        if ($data['created_until'] ?? null) {
+                            $indicators['created_until'] = 'Until: ' . $data['created_until'];
+                        }
+                        return $indicators;
                     }),
-
+            
                 Filter::make('has_receipt')
                     ->query(fn (Builder $query) => $query->whereNotNull('mpesa_receipt_number'))
                     ->label('Has Receipt Number')
+                    ->indicator('Receipt Status') // Added Indicator
                     ->toggle(),
             ])
             ->actions([
