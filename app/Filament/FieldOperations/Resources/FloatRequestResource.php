@@ -89,7 +89,7 @@ class FloatRequestResource extends Resource
                     ->label('Approved By'),
                 TextColumn::make('created_at')
                     ->dateTime()
-                    ->sortable(desc),
+                    ->sortable(),
             ])
 
             ->headerActions([
