@@ -120,21 +120,6 @@ class MpesaTransactionResource extends Resource
     {
         return $table
             ->columns([
-                Tables\Columns\TextColumn::make('id')
-                    ->sortable()
-                    ->searchable(),
-
-                Tables\Columns\TextColumn::make('transactionable_type')
-                    ->label('Type')
-                    ->formatStateUsing(fn ($state) => class_basename($state))
-                    ->badge()
-                    ->color('primary')
-                    ->searchable(),
-
-                Tables\Columns\TextColumn::make('transactionable_id')
-                    ->label('Related ID')
-                    ->sortable(),
-
                 Tables\Columns\TextColumn::make('type')
                     ->badge()
                     ->colors([
