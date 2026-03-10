@@ -27,11 +27,11 @@ class AdminPanelProvider extends PanelProvider
             ->default()
             ->id('admin')
             ->path('admin')
+            ->login() // Ensure this is present to allow logging in
             ->brandName('PurchaseMaster')
-            ->login()
             ->darkMode(true)
             ->colors([
-                'primary' => Color::Blue, // Distinct color from Field Operations
+                'primary' => Color::Blue,
             ])
             ->viteTheme('resources/css/app.css')
             ->userMenuItems([
@@ -44,7 +44,6 @@ class AdminPanelProvider extends PanelProvider
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\\Filament\\Pages')
             ->discoverWidgets(in: app_path('Filament/Widgets'), for: 'App\\Filament\\Widgets')
             ->navigationGroups([
-                // ✅ Icons removed to prevent 500 errors when items also have icons
                 NavigationGroup::make()->label('Users Group'),
                 NavigationGroup::make()->label('Group Purchases'),
                 NavigationGroup::make()->label('Settings'),
@@ -64,7 +63,7 @@ class AdminPanelProvider extends PanelProvider
                 DispatchServingFilamentEvent::class,
             ])
             ->authMiddleware([
-                Authenticate::class,
+                Authenticate::class, // This uses the canAccessPanel() logic in User.php
             ]);
     }
 }

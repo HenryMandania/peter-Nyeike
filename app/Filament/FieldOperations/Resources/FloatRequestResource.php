@@ -106,7 +106,7 @@ class FloatRequestResource extends Resource
                     ->icon('heroicon-o-check-circle')
                     ->color('success')
                     ->requiresConfirmation()
-                    ->visible(fn (FloatRequest $record) => $record->status === 'pending')
+                    ->visible(fn (FloatRequest $record, User $user) => $user->can('approve', $record) && $record->status === 'pending')
                     ->action(fn (FloatRequest $record) => $record->update([
                         'status' => 'approved',
                         'approved_by' => Auth::id(),
@@ -117,7 +117,7 @@ class FloatRequestResource extends Resource
                     ->icon('heroicon-o-x-circle')
                     ->color('danger')
                     ->requiresConfirmation()
-                    ->visible(fn (FloatRequest $record) => $record->status === 'pending')
+                    ->visible(fn (FloatRequest $record, User $user) =>$user->can('reject', $record) && $record->status === 'pending')
                     ->action(fn (FloatRequest $record) => $record->update([
                         'status' => 'rejected',
                     ])),

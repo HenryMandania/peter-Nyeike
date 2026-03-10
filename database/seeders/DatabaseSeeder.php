@@ -18,12 +18,7 @@ class DatabaseSeeder extends Seeder
 
         // 2. Define your exact dot-notation permissions
         $permissions = [
-            'purchase.view',
-            'purchase.create',
-            'purchase.approve',
-            'float-request.view',
-            'float-request.approve',
-            'float-request.reject',
+            'dashboard.view',            
         ];
 
         $guards = ['web', 'sanctum'];

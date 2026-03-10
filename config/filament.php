@@ -100,4 +100,6 @@ return [
 
     'dark_mode' => true,
 
+    'auth_guard' => 'web',
+
 ];

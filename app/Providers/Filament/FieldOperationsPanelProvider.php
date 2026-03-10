@@ -5,7 +5,7 @@ namespace App\Providers\Filament;
 use App\Filament\FieldOperations\Widgets\SalesOverview;
 use App\Filament\FieldOperations\Widgets\CompanyPerformanceChart;
 use App\Filament\FieldOperations\Widgets\SalesStatusChart;
-use Filament\Pages\Dashboard;
+use App\Filament\FieldOperations\Pages\Dashboard;
 use Filament\Http\Middleware\Authenticate;
 use Filament\Http\Middleware\AuthenticateSession;
 use Filament\Http\Middleware\DisableBladeIconComponents;
