@@ -86,7 +86,18 @@ class FloatRequestResource extends Resource
                         default => 'gray',
                     }),
                 TextColumn::make('approver.name')
-                    ->label('Approved By'),
+                    ->label('Approved By')
+                    ->icon(fn (FloatRequest $record): ?string => match ($record->status) {
+                        'approved' => 'heroicon-o-check-circle',
+                        'rejected' => 'heroicon-o-x-circle',
+                        default => null,
+                    })
+                    ->color(fn (FloatRequest $record): string => match ($record->status) {
+                        'approved' => 'success', 
+                        'rejected' => 'danger',  
+                        default => 'gray',
+                    })
+                    ->sortable(),
                 TextColumn::make('created_at')
                     ->dateTime()
                     ->sortable(),
@@ -106,7 +117,8 @@ class FloatRequestResource extends Resource
                     ->icon('heroicon-o-check-circle')
                     ->color('success')
                     ->requiresConfirmation()
-                    ->visible(fn (FloatRequest $record, User $user) => $user->can('approve', $record) && $record->status === 'pending')
+                    // Simplify the visibility check to rule out variable injection issues
+                    ->visible(fn (FloatRequest $record) => auth()->user()->can('approve', $record) && $record->status === 'pending')
                     ->action(fn (FloatRequest $record) => $record->update([
                         'status' => 'approved',
                         'approved_by' => Auth::id(),
@@ -116,10 +128,11 @@ class FloatRequestResource extends Resource
                     ->label('Reject')
                     ->icon('heroicon-o-x-circle')
                     ->color('danger')
-                    ->requiresConfirmation()
-                    ->visible(fn (FloatRequest $record, User $user) =>$user->can('reject', $record) && $record->status === 'pending')
+                    ->requiresConfirmation()                 
+                    ->visible(fn (FloatRequest $record) => auth()->user()->can('reject', $record) && $record->status === 'pending')
                     ->action(fn (FloatRequest $record) => $record->update([
                         'status' => 'rejected',
+                        'approved_by' => Auth::id(),
                     ])),
                 
                 EditAction::make(),
