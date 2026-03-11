@@ -1,11 +1,13 @@
 <?php
 
 namespace App\Filament\Resources\Roles;
+
 use Spatie\Permission\Models\Role;
 use Filament\Forms;
 use Filament\Forms\Form; 
 use Filament\Forms\Components\Section;
 use Filament\Forms\Components\TextInput;
+use Filament\Forms\Components\Select;
 use Filament\Forms\Components\CheckboxList;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Actions\EditAction;
@@ -14,9 +16,10 @@ use App\Filament\Resources\Roles\RoleResource\Pages;
 use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
+use Illuminate\Validation\Rules\Unique;
 
 class RoleResource extends Resource
-{    
+{     
     protected static ?string $model = Role::class;
     
     protected static ?string $navigationGroup = 'Users Group';
@@ -32,10 +35,21 @@ class RoleResource extends Resource
                     ->schema([
                         TextInput::make('name')
                             ->required()
-                            ->unique(ignoreRecord: true)
+                            ->unique(
+                                table: Role::class,
+                                column: 'name',
+                                ignorable: fn ($record) => $record,
+                                modifyRuleUsing: function (Unique $rule, Forms\Get $get) {
+                                    return $rule->where('guard_name', $get('guard_name'));
+                                }
+                            )
                             ->placeholder('e.g. Manager'),
 
-                        TextInput::make('guard_name')
+                        Select::make('guard_name')
+                            ->options([
+                                'web' => 'web',
+                                'api' => 'api',
+                            ])
                             ->default('web')
                             ->required(),
 
@@ -72,7 +86,7 @@ class RoleResource extends Resource
                 EditAction::make(),                
             ])
             ->bulkActions([
-                BulkActionGroup::make([                   
+                BulkActionGroup::make([                 
                     Tables\Actions\DeleteBulkAction::make(),
                 ]),
             ]);

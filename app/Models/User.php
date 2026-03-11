@@ -36,26 +36,24 @@ class User extends Authenticatable implements FilamentUser
     ];
 
     /**
-     * Forces the model to support both Web (Filament) and Sanctum (API) guards.
-     * This prevents the GuardDoesNotMatch exception during seeding and login.
-     */
-    public function guardName(): array
-    {
-        return ['web', 'sanctum'];
-    }
-
-    /**
      * Filament access control logic.
+     * Allows any user with the 'admin' role access to all panels.
      */
     public function canAccessPanel(Panel $panel): bool
     {
-
-        if ($panel->getId() === 'admin') {
-            return $this->hasRole('admin', 'web');
+        // 1. Universal bypass: Any user with the 'admin' role can access everything.
+        if ($this->hasRole('admin', 'web')) {
+            return true;
         }
 
+        // 2. Strict access for Admin Panel (only admins - caught by #1)
+        if ($panel->getId() === 'admin') {
+            return false;
+        }
+
+        // 3. Access for Field Operations Panel for authorized roles
         if ($panel->getId() === 'field-operations') {
-            return $this->hasAnyRole(['admin', 'field-operator'], 'web');
+            return $this->hasAnyRole(['supervisor', 'field-operator'], 'web');
         }
 
         return false;

@@ -18,6 +18,7 @@ use Filament\Tables\Table;
 use Illuminate\Support\Facades\Auth;
 use Closure;
 use pxlrbt\FilamentExcel\Actions\Tables\ExportAction;
+use App\Models\User;
 
 class FloatRequestResource extends Resource
 {
@@ -25,8 +26,7 @@ class FloatRequestResource extends Resource
     protected static ?string $navigationLabel = 'Float Requests';
     protected static ?string $navigationGroup = 'Shifts';     
     protected static ?string $navigationIcon = 'heroicon-o-hand-raised';
-    protected static ?int $navigationSort = 3;
-
+    protected static ?int $navigationSort = 3;  
     /**
      * Prevents the "Create" button from appearing if no active shift exists.
      */
