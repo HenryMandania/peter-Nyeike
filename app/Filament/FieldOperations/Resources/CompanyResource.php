@@ -15,6 +15,7 @@ use Filament\Tables\Table;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Infolists\Infolist;
 use Filament\Infolists\Components\TextEntry;
+use Illuminate\Database\Eloquent\Builder;
 
 class CompanyResource extends Resource
 {
