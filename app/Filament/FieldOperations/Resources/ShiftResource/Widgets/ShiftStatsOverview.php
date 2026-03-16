@@ -9,14 +9,15 @@ use App\Models\FloatRequest;
 use App\Services\BalanceService;
 use Filament\Widgets\StatsOverviewWidget as BaseWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
-use Illuminate\Support\Facades\DB;
 
 class ShiftStatsOverview extends BaseWidget
 {
     protected static ?string $pollingInterval = '15s';
     protected int | string | array $columnSpan = 'full';
 
-    // Set this to 4 to ensure 4 widgets per row
+    // State to hold filters passed from the Resource page
+    public ?array $filters = [];
+
     protected function getColumns(): int
     {
         return 4;
@@ -26,18 +27,32 @@ class ShiftStatsOverview extends BaseWidget
     {
         $service = new BalanceService();
         
-        $purchaseStats = Purchase::query()
-            ->selectRaw('SUM(total_amount) as total_val, SUM(transaction_fee) as fees, COUNT(*) as qty, SUM(sales_amount) as total_sales, SUM(gross_profit) as total_profit')
-            ->first();
-            
-        $totalExpenses = Expense::sum('amount');
-        $activeShifts = Shift::where('status', 'open')->count();
+        // Base queries
+        $purchasesQuery = Purchase::query();
+        $expensesQuery = Expense::query();
+        $shiftsQuery = Shift::query();
+
+        // Apply filters if they exist
+        if (!empty($this->filters['company_id'])) {
+            $purchasesQuery->where('company_id', $this->filters['company_id']);
+            $expensesQuery->whereHas('shift', fn($q) => $q->where('company_id', $this->filters['company_id']));
+            $shiftsQuery->where('company_id', $this->filters['company_id']);
+        }
         
-        // Total Liquidity across all shifts
-        $totalRunningBalance = Shift::all()->reduce(fn ($carry, $shift) => $carry + $service->calculate($shift), 0);
+        if (!empty($this->filters['status'])) {
+            $shiftsQuery->where('status', $this->filters['status']);
+        }
+
+        // Execute aggregations
+        $purchaseStats = $purchasesQuery->selectRaw('SUM(total_amount) as total_val, SUM(transaction_fee) as fees, COUNT(*) as qty, SUM(sales_amount) as total_sales, SUM(gross_profit) as total_profit')->first();
+        $totalExpenses = $expensesQuery->sum('amount');
+        $activeShifts = $shiftsQuery->where('status', 'open')->count();
+        
+        // Calculate running balance using the filtered list
+        $totalRunningBalance = $shiftsQuery->get()->reduce(fn ($carry, $shift) => $carry + $service->calculate($shift), 0);
 
         $trends = $this->getTrends();
-
+        
         return [
             // ROW 1
             Stat::make('Active Shifts', $activeShifts)

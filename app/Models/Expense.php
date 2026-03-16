@@ -32,4 +32,8 @@ class Expense extends Model
     {
         return $this->belongsTo(User::class, 'created_by');
     }
+    public function mpesaTransactions()
+    {
+        return $this->morphMany(\App\Models\MpesaTransaction::class, 'transactionable');
+    }
 }

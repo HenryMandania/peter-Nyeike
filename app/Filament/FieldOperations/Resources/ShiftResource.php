@@ -188,6 +188,28 @@ class ShiftResource extends Resource
                     ->sortable(),
             ])
             ->filters([
+
+                Filter::make('opened_at')
+                    ->form([
+                        DatePicker::make('from')->label('From Date'),
+                        DatePicker::make('until')->label('To Date'),
+                    ])
+                    ->query(function (Builder $query, array $data): Builder {
+                        return $query
+                            ->when($data['from'], fn (Builder $query, $date) => $query->whereDate('opened_at', '>=', $date))
+                            ->when($data['until'], fn (Builder $query, $date) => $query->whereDate('opened_at', '<=', $date));
+                    })
+                    ->indicateUsing(function (array $data): array {
+                        $indicators = [];
+                        if ($data['from'] ?? null) {
+                            $indicators['from'] = 'From: ' . \Carbon\Carbon::parse($data['from'])->toFormattedDateString();
+                        }
+                        if ($data['until'] ?? null) {
+                            $indicators['until'] = 'Until: ' . \Carbon\Carbon::parse($data['until'])->toFormattedDateString();
+                        }
+                        return $indicators; // Dynamic indicators for the date range
+                    }),
+                    
                 SelectFilter::make('company_id')
                     ->label('Filter by Company')
                     ->relationship('company', 'name')
@@ -209,26 +231,7 @@ class ShiftResource extends Resource
                     ])
                     ->indicator('Status'), // Added
             
-                Filter::make('opened_at')
-                    ->form([
-                        DatePicker::make('from')->label('From Date'),
-                        DatePicker::make('until')->label('To Date'),
-                    ])
-                    ->query(function (Builder $query, array $data): Builder {
-                        return $query
-                            ->when($data['from'], fn (Builder $query, $date) => $query->whereDate('opened_at', '>=', $date))
-                            ->when($data['until'], fn (Builder $query, $date) => $query->whereDate('opened_at', '<=', $date));
-                    })
-                    ->indicateUsing(function (array $data): array {
-                        $indicators = [];
-                        if ($data['from'] ?? null) {
-                            $indicators['from'] = 'From: ' . \Carbon\Carbon::parse($data['from'])->toFormattedDateString();
-                        }
-                        if ($data['until'] ?? null) {
-                            $indicators['until'] = 'Until: ' . \Carbon\Carbon::parse($data['until'])->toFormattedDateString();
-                        }
-                        return $indicators; // Dynamic indicators for the date range
-                    }),
+                
             ])
 
             ->headerActions([

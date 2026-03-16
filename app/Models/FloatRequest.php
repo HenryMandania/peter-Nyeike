@@ -42,4 +42,10 @@ class FloatRequest extends Model
 
         return $lastShift ? $lastShift->closing_balance : 0;
     }
+
+   
+    public function mpesaTransactions()
+    {
+        return $this->morphMany(\App\Models\MpesaTransaction::class, 'transactionable');
+    }
 }

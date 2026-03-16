@@ -98,4 +98,94 @@ class ExpenseController extends Controller
 
         return response()->json($expenses);
     }
+
+    public function captureExpenseMpesaMessage(Request $request)
+{
+    $request->validate([
+        'expense_id' => 'required|exists:expenses,id',
+        'message' => 'required|string'
+    ]);
+
+    $expense = \App\Models\Expense::findOrFail($request->expense_id);
+    $message = $request->message;
+
+    // Check if expense already has a completed payment
+    $existingPayment = $expense->mpesaTransactions()
+        ->where('status', 'completed')
+        ->first();
+
+    if ($existingPayment) {
+        return response()->json([
+            'success' => false,
+            'message' => 'Payment already updated',
+            'mpesa_code' => $existingPayment->mpesa_receipt_number
+        ]);
+    }
+
+    try {
+        // Parse SMS
+        preg_match('/^([A-Z0-9]+)/', $message, $code);
+        preg_match('/Ksh([\d,]+\.\d{2})/', $message, $amount);
+        preg_match('/from\s(.+?)\sYour/i', $message, $name);
+        preg_match('/On\s(.+?)\sTake/i', $message, $datetime);
+
+        $mpesaCode = $code[1] ?? null;
+        $amountValue = isset($amount[1]) ? str_replace(',', '', $amount[1]) : null;
+        $customerName = $name[1] ?? null;
+        $timeValue = $datetime[1] ?? null;
+
+        if (!$mpesaCode) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unable to parse MPESA message'
+            ], 422);
+        }
+
+        // Prevent duplicate Mpesa code
+        if (\App\Models\MpesaTransaction::where('mpesa_receipt_number', $mpesaCode)->exists()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'MPESA transaction already recorded'
+            ]);
+        }
+
+        // Create MpesaTransaction
+        $transaction = \App\Models\MpesaTransaction::create([
+            'transactionable_type' => Expense::class,
+            'transactionable_id' => $expense->id,
+            'type' => 'expense',
+            'mpesa_receipt_number' => $mpesaCode,
+            'checkout_request_id' => uniqid('SMS_'),
+            'amount' => $amountValue,
+            'phone_number' => '0',
+            'status' => 'completed',
+            'result_desc' => $customerName,
+            'completed_at' => now(),
+            'raw_callback_payload' => json_encode([
+                'sms' => $message,
+                'name' => $customerName,
+                'time' => $timeValue
+            ])
+        ]);
+
+        // Optionally, mark expense as paid
+        $expense->update(['status' => 'paid']);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Expense payment recorded successfully',
+            'data' => [
+                'expense_id' => $expense->id,
+                'mpesa_code' => $mpesaCode,
+                'amount' => $amountValue
+            ]
+        ]);
+
+    } catch (\Exception $e) {
+        return response()->json([
+            'success' => false,
+            'message' => $e->getMessage()
+        ], 500);
+    }
+}
 }

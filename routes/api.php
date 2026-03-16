@@ -62,4 +62,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
 
     Route::post('/mpesa/vendor-payment', [PaymentController::class, 'initiateVendorPayment']);
+    Route::post('/mpesa/purchase-message', [PaymentController::class, 'capturePurchaseMpesaMessage']);
+    Route::post('/mpesa/float-request-message', [PaymentController::class, 'captureFloatRequestMpesaMessage']);
+    Route::post('/mpesa/expense-message', [ExpenseController::class, 'captureExpenseMpesaMessage']);
 });

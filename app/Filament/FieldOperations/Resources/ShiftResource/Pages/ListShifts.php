@@ -23,4 +23,10 @@ class ListShifts extends ListRecords
             ShiftResource\Widgets\ShiftStatsOverview::class,
         ];
     }
+
+  
+    public function updatedTableFilters(): void
+    {     
+        $this->dispatch('filterChanged', $this->tableFilters);
+    }
 }
