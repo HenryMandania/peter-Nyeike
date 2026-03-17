@@ -9,6 +9,7 @@
         "php": "^8.2",
         "akika/laravel-mpesa": "^1.16",
         "bezhansalleh/filament-shield": "^3.2",
+        "doctrine/dbal": "^4.4",
         "filament/filament": "3.3.43",
         "flowframe/laravel-trend": "^0.4.0",
         "laravel/framework": "^12.0",

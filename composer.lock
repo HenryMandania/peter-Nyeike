@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "5026425f1926b981164ac5f3c417b846",
+    "content-hash": "4fc8168311a97bff56e6f4b37ee66c1c",
     "packages": [
         {
             "name": "akika/laravel-mpesa",

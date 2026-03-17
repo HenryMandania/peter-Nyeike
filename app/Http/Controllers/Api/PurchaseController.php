@@ -227,4 +227,88 @@ class PurchaseController extends Controller implements HasMiddleware
         ], 500);
     }
 }
+
+/**
+ * Record a sale for an existing purchase
+ */
+public function sell(Request $request, $purchaseId): JsonResponse
+{
+    $user = Auth::user();
+
+    $validated = $request->validate([
+        'selling_unit_price' => 'required|numeric|min:0.01',
+    ]);
+
+    try {
+        return DB::transaction(function () use ($validated, $user, $purchaseId) {
+            // 1. Find and lock the purchase record
+            $purchase = Purchase::with('shift')->lockForUpdate()->findOrFail($purchaseId);
+
+            // 2. Validate status and availability
+            if ($purchase->status !== 'approved') {
+                return response()->json(['message' => 'Only approved purchases can be sold.'], 422);
+            }
+
+            if ($purchase->is_sold) {
+                return response()->json(['message' => 'This purchase has already been sold.'], 422);
+            }
+
+            if (!$purchase->shift) {
+                return response()->json(['message' => 'Purchase shift record is missing.'], 422);
+            }
+
+            $sellingPrice = floatval($validated['selling_unit_price']);
+            $costPrice = floatval($purchase->unit_price);
+
+            // 3. Business Logic: Prevent selling at a loss if required
+            if ($sellingPrice < $costPrice) {
+                return response()->json([
+                    'message' => 'Selling price cannot be lower than the cost price.',
+                    'cost_price' => number_format($costPrice, 2)
+                ], 422);
+            }
+
+            $totalSales = $purchase->quantity * $sellingPrice;
+            $profit = $totalSales - $purchase->total_amount;
+
+            // 4. Update Purchase Record
+            $purchase->update([
+                'selling_unit_price' => $sellingPrice,
+                'sales_amount'       => $totalSales,
+                'gross_profit'       => $profit,
+                'is_sold'            => true,
+                'sold_at'            => now(),
+                'sold_by'            => $user->id,
+            ]);
+
+            // 5. Create the Sale Record
+            $sale = \App\Models\Sale::create([
+                'purchase_id'        => $purchase->id,
+                'quantity'           => $purchase->quantity,
+                'selling_unit_price' => $sellingPrice,
+                'sales_amount'       => $totalSales,
+                'cost_amount'        => $purchase->total_amount,
+                'profit'             => $profit,
+                'sold_by'            => $user->id,
+                'company_id'         => $purchase->shift->company_id,
+            ]);
+
+            return response()->json([
+                'message' => 'Sale processed successfully.',
+                'data'    => [
+                    'purchase_id' => $purchase->id,
+                    'sale_id'     => $sale->id,
+                    'revenue'     => number_format($totalSales, 2),
+                    'profit'      => number_format($profit, 2),
+                ]
+            ], 200);
+        });
+    } catch (Exception $e) {
+        return response()->json([
+            'message' => 'Failed to process sale.',
+            'error'   => $e->getMessage()
+        ], 500);
+    }
+} 
+
 }  
