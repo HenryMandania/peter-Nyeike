@@ -48,4 +48,18 @@ class FloatRequest extends Model
     {
         return $this->morphMany(\App\Models\MpesaTransaction::class, 'transactionable');
     }
+
+  
+    public function company()
+    {
+        return $this->hasOneThrough(
+            \App\Models\Company::class,
+            \App\Models\Shift::class,
+            'id',            
+            'id',            
+            'shift_id',     
+            'company_id'  
+        );
+    }
+    
 }

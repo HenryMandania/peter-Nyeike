@@ -8,6 +8,7 @@ use App\Models\Shift;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Http\JsonResponse;
 
 class FloatRequestController extends Controller
 {
@@ -139,5 +140,26 @@ class FloatRequestController extends Controller
             'message' => 'Float request submitted successfully.',
             'data' => $floatRequest
         ], 201);
+    }
+    
+    public function index(Request $request): JsonResponse
+    {
+        $query = FloatRequest::with([
+            'user:id,name', 
+           
+            'company:companies.id,companies.name', 
+            'shift:id,status'
+        ]);
+    
+        if ($request->query('status') === 'approved_unpaid') {
+            $query->where('status', 'approved');
+        }
+    
+        $requests = $query->orderBy('created_at', 'desc')->paginate(15);
+    
+        return response()->json([
+            'message' => 'Float requests fetched successfully.',
+            'data'    => $requests
+        ], 200);
     }
 }

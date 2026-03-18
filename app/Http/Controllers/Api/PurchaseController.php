@@ -33,21 +33,31 @@ class PurchaseController extends Controller implements HasMiddleware
             new Middleware('permission:purchase.approve', only: ['approve','reject']),
         ];
     }
+/**
+ * Fetch purchases with optional filtering for unpaid items
+ */
+public function index(Request $request): JsonResponse
+{
+    $query = Purchase::with(['vendor', 'item', 'shift', 'company:id,name', 'creator:id,name']);
 
-    /**
-     * Fetch all purchases
-     */
-    public function index(): JsonResponse
-    {
-        $purchases = Purchase::with(['vendor', 'item', 'shift'])
-            ->orderBy('created_at', 'desc')
-            ->paginate(15);
-
-        return response()->json([
-            'message' => 'Purchases fetched successfully.',
-            'data'    => $purchases,
-        ], 200);
+    // Check if the mobile app specifically wants items waiting for payment
+    if ($request->query('status') === 'approved_unpaid') {
+        $query->where('status', 'approved')
+              ->whereDoesntHave('mpesaTransactions', function ($q) {
+                  $q->where('status', 'completed');
+              });
+    } elseif ($request->filled('status')) {
+        // Allow filtering by standard statuses (pending, approved, rejected, etc.)
+        $query->where('status', $request->status);
     }
+
+    $purchases = $query->orderBy('created_at', 'desc')->paginate(15);
+
+    return response()->json([
+        'message' => 'Purchases fetched successfully.',
+        'data'    => $purchases,
+    ], 200);
+}
 
     /**
      * Create a new purchase
@@ -310,5 +320,7 @@ public function sell(Request $request, $purchaseId): JsonResponse
         ], 500);
     }
 } 
+
+
 
 }  

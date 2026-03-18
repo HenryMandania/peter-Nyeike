@@ -86,17 +86,33 @@ class ExpenseController extends Controller
         }
     }
 
-    /**
-     * List expenses for the current user's active shift.
-     */
-    public function index()
-    {
-        $expenses = Expense::where('created_by', Auth::id())
-            ->with('category:id,name')
-            ->latest()
-            ->paginate(15);
+/**
+ * Fetch expenses with optional filtering for unpaid items
+ */
+public function index(Request $request): \Illuminate\Http\JsonResponse
+{
+    // 1. Start query and eager load relationships
+    // Note: 'category' uses 'expense_category_id' as the foreign key based on your data
+    $query = \App\Models\Expense::where('created_by', \Illuminate\Support\Facades\Auth::id())
+        ->with([
+            'category:id,name', 
+            'creator:id,name',
+            'shift:id,status'
+        ]);
 
-        return response()->json($expenses);
+    // 2. Simplified "Payable" filter: Just check if it's NOT paid yet
+    if ($request->query('status') === 'approved_unpaid') {
+        $query->whereNull('mpesa_receipt_number');
+    } 
+    // 3. Optional: still allow filtering by status if you decide to use it later
+    elseif ($request->filled('status')) {
+        $query->where('status', $request->status);
     }
+
+    // 4. Return paginated results
+    $expenses = $query->latest()->paginate(15);
+
+    return response()->json($expenses, 200);
+}
      
 }

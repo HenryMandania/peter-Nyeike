@@ -133,4 +133,14 @@ class Purchase extends Model
     {
         return $this->hasOne(Sale::class);
     }
+ 
+    public function company()
+    { 
+        return $this->belongsTo(\App\Models\Company::class);
+    }
+    
+    public function creator()
+    {        
+        return $this->belongsTo(\App\Models\User::class, 'created_by');
+    }
 }
