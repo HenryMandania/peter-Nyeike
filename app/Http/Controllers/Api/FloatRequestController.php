@@ -142,24 +142,37 @@ class FloatRequestController extends Controller
         ], 201);
     }
     
-    public function index(Request $request): JsonResponse
-    {
-        $query = FloatRequest::with([
-            'user:id,name', 
-           
-            'company:companies.id,companies.name', 
-            'shift:id,status'
-        ]);
-    
-        if ($request->query('status') === 'approved_unpaid') {
-            $query->where('status', 'approved');
-        }
-    
-        $requests = $query->orderBy('created_at', 'desc')->paginate(15);
-    
-        return response()->json([
-            'message' => 'Float requests fetched successfully.',
-            'data'    => $requests
-        ], 200);
+    public function index(Request $request): \Illuminate\Http\JsonResponse
+{
+    $user = \Illuminate\Support\Facades\Auth::user();
+
+    // Start query with eager loading
+    $query = \App\Models\FloatRequest::with([
+        'user:id,name',
+        'company:id,name',
+        'shift:id,status'
+    ]);
+
+    // 🔐 Restrict non-admin/supervisor users
+    if (
+        !$user->hasRole(['admin', 'supervisor']) &&
+        !$user->can('float_requests.view.all')
+    ) {
+        $query->where('user_id', $user->id);
     }
+
+    // Optional status filter
+    if ($request->query('status') === 'approved_unpaid') {
+        $query->where('status', 'approved');
+    } elseif ($request->filled('status')) {
+        $query->where('status', $request->status);
+    }
+
+    $requests = $query->orderBy('created_at', 'desc')->paginate(15);
+
+    return response()->json([
+        'message' => 'Float requests fetched successfully.',
+        'data'    => $requests
+    ], 200);
+}
 }

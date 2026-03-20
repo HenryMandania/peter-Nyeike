@@ -91,25 +91,31 @@ class ExpenseController extends Controller
  */
 public function index(Request $request): \Illuminate\Http\JsonResponse
 {
-    // 1. Start query and eager load relationships
-    // Note: 'category' uses 'expense_category_id' as the foreign key based on your data
-    $query = \App\Models\Expense::where('created_by', \Illuminate\Support\Facades\Auth::id())
-        ->with([
-            'category:id,name', 
-            'creator:id,name',
-            'shift:id,status'
-        ]);
+    $user = \Illuminate\Support\Facades\Auth::user();
 
-    // 2. Simplified "Payable" filter: Just check if it's NOT paid yet
+    // Start query
+    $query = \App\Models\Expense::with([
+        'category:id,name',
+        'creator:id,name',
+        'shift:id,status'
+    ]);
+
+    // 🔐 Restrict non-admin/supervisor users
+    if (
+        !$user->hasRole(['admin', 'supervisor']) &&
+        !$user->can('expense.view.all')
+    ) {
+        $query->where('created_by', $user->id);
+    }
+
+    // Payable filter
     if ($request->query('status') === 'approved_unpaid') {
         $query->whereNull('mpesa_receipt_number');
     } 
-    // 3. Optional: still allow filtering by status if you decide to use it later
     elseif ($request->filled('status')) {
         $query->where('status', $request->status);
     }
 
-    // 4. Return paginated results
     $expenses = $query->latest()->paginate(15);
 
     return response()->json($expenses, 200);

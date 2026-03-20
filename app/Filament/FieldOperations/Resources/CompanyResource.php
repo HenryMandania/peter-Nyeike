@@ -58,13 +58,6 @@ class CompanyResource extends Resource
                     ->toggleable(isToggledHiddenByDefault: true),
             ])
             ->filters([
-                // Simple text filter for location
-                Tables\Filters\SelectFilter::make('location')
-                    ->options(
-                        Company::query()->pluck('location', 'location')->toArray()
-                    )
-                    ->searchable()
-                    ->indicator('Location'),
     
                 // Date range filter for creation date
                 Filter::make('created_at')

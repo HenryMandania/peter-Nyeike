@@ -3,6 +3,7 @@
 namespace App\Filament\FieldOperations\Resources;
 
 use App\Models\CompanyPayment;
+use App\Models\Company;
 use Filament\Forms;
 use Filament\Forms\Form;
 use Filament\Resources\Resource;
@@ -14,6 +15,7 @@ use Filament\Tables\Filters\Filter;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Forms\Components\DatePicker;
 use pxlrbt\FilamentExcel\Actions\Tables\ExportAction;
+use Illuminate\Database\Eloquent\Builder;
 
 class CompanyPaymentResource extends Resource
 {
@@ -22,32 +24,44 @@ class CompanyPaymentResource extends Resource
     protected static ?string $navigationGroup = 'Accounts';
     protected static ?string $navigationLabel = 'Company Payments';
     protected static ?int $navigationSort = 2;
-    
+
     public static function form(Form $form): Form
     {
         return $form->schema([
             Forms\Components\Section::make('Record Payment')
+                ->description('Ensure the Reference No matches the M-Pesa or Bank statement.')
                 ->schema([
                     Forms\Components\Select::make('company_id')
                         ->relationship('company', 'name')
                         ->searchable()
                         ->preload()
+                        ->live() // Allows other fields to react to company selection
                         ->required(),
+                    
                     Forms\Components\TextInput::make('amount')
                         ->numeric()
                         ->prefix('KES')
+                        ->minValue(1)
                         ->required(),
+
                     Forms\Components\DatePicker::make('payment_date')
                         ->default(now())
                         ->required(),
+
                     Forms\Components\Select::make('payment_method')
                         ->options([
                             'Bank Transfer' => 'Bank Transfer',
                             'M-Pesa' => 'M-Pesa',
                             'Cash' => 'Cash',
-                        ])->required(),
+                        ])
+                        ->native(false)
+                        ->required(),
+
                     Forms\Components\TextInput::make('reference_no')
-                        ->label('Ref / Receipt No'),
+                        ->label('Ref / Receipt No')
+                        ->placeholder('e.g. RCK1234567')
+                        ->unique(ignoreRecord: true)
+                        ->required(fn (Forms\Get $get) => $get('payment_method') === 'M-Pesa'),
                 ])->columns(2)
         ]);
     }
@@ -59,63 +73,78 @@ class CompanyPaymentResource extends Resource
                 TextColumn::make('payment_date')
                     ->date()
                     ->sortable(),
+
                 TextColumn::make('company.name')
                     ->label('Company')
                     ->searchable()
                     ->sortable(),
+
+                // 1. Total Sales / Expected from this Company
+                TextColumn::make('company.total_purchases')
+                    ->label('Total Sales (Expected)')
+                    ->money('KES')
+                    ->color('gray'),
+
+                // 2. This Specific Payment Amount
                 TextColumn::make('amount')
+                    ->label('Amount Paid')
                     ->money('KES')
                     ->weight('bold')
+                    ->color('success')
                     ->summarize(Sum::make()->label('Total Received')),
-                TextColumn::make('payment_method')->badge(),
-                TextColumn::make('reference_no')->label('Ref'),
+
+                // 3. Current Outstanding Balance for this Company
+                TextColumn::make('company.balance')
+                    ->label('Current Balance')
+                    ->money('KES')
+                    ->weight('font-medium')
+                    ->color(fn ($state) => $state > 0 ? 'danger' : 'success')
+                    ->icon(fn ($state) => $state > 0 ? 'heroicon-m-arrow-trending-up' : 'heroicon-m-check-circle')
+                    ->description(fn ($state) => $state > 0 ? 'Outstanding Owed' : 'Account Cleared'),
+
+                TextColumn::make('payment_method')
+                    ->badge()
+                    ->color(fn (string $state): string => match ($state) {
+                        'M-Pesa' => 'success',
+                        'Bank Transfer' => 'info',
+                        'Cash' => 'warning',
+                        default => 'gray',
+                    }),
+
+                TextColumn::make('reference_no')
+                    ->label('Ref')
+                    ->copyable()
+                    ->searchable(),
             ])
+            ->defaultSort('payment_date', 'desc')
             ->headerActions([
                 ExportAction::make()->label('Export Excel')->color('success'),
             ])
             ->filters([
                 SelectFilter::make('company_id')
-                    ->label('Company')
+                    ->label('Filter by Company')
                     ->relationship('company', 'name')
                     ->searchable()
-                    ->indicator('Company'), // Displays "Company: [Name]" in the ribbon
-            
+                    ->indicator('Company'),
+
                 Filter::make('payment_date')
                     ->form([
                         DatePicker::make('from')->label('Date From'),
                         DatePicker::make('until')->label('Date To'),
                     ])
-                    ->query(fn ($query, array $data) => $query
-                        ->when($data['from'] ?? null, fn ($q, $date) => $q->whereDate('payment_date', '>=', $date))
-                        ->when($data['until'] ?? null, fn ($q, $date) => $q->whereDate('payment_date', '<=', $date))
+                    ->query(fn (Builder $query, array $data) => $query
+                        ->when($data['from'], fn ($q, $date) => $q->whereDate('payment_date', '>=', $date))
+                        ->when($data['until'], fn ($q, $date) => $q->whereDate('payment_date', '<=', $date))
                     )
-                    ->indicateUsing(function (array $data): array {
-                        $indicators = [];
-                        
-                        if ($data['from'] ?? null) {
-                            $indicators[] = 'From: ' . \Carbon\Carbon::parse($data['from'])->toFormattedDateString();
-                        }
-                        if ($data['until'] ?? null) {
-                            $indicators[] = 'Until: ' . \Carbon\Carbon::parse($data['until'])->toFormattedDateString();
-                        }
-                        
-                        return $indicators; // These will appear as individual pills in the ribbon
-                    }),
             ])
             ->actions([
                 Tables\Actions\ViewAction::make(),
-                Tables\Actions\EditAction::make(),                
+                Tables\Actions\EditAction::make(),
             ]);
     }
 
-    public static function getRelations(): array
+    public static function getPages(): array
     {
-        return [
-            CompanyPaymentResource\RelationManagers\PurchasesRelationManager::class,
-        ];
-    }
-
-    public static function getPages(): array {
         return [
             'index' => CompanyPaymentResource\Pages\ListCompanyPayments::route('/'),
             'create' => CompanyPaymentResource\Pages\CreateCompanyPayment::route('/create'),

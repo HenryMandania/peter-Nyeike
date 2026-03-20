@@ -38,16 +38,25 @@ class PurchaseController extends Controller implements HasMiddleware
  */
 public function index(Request $request): JsonResponse
 {
+    $user = Auth::user();
+
     $query = Purchase::with(['vendor', 'item', 'shift', 'company:id,name', 'creator:id,name']);
 
-    // Check if the mobile app specifically wants items waiting for payment
+    // Allow full access if user is admin/supervisor OR has permission
+    if (
+        !$user->hasRole(['admin', 'supervisor']) &&
+        !$user->can('purchase.view.all')
+    ) {
+        $query->where('created_by', $user->id);
+    }
+
+    // Existing filters
     if ($request->query('status') === 'approved_unpaid') {
         $query->where('status', 'approved')
               ->whereDoesntHave('mpesaTransactions', function ($q) {
                   $q->where('status', 'completed');
               });
     } elseif ($request->filled('status')) {
-        // Allow filtering by standard statuses (pending, approved, rejected, etc.)
         $query->where('status', $request->status);
     }
 
