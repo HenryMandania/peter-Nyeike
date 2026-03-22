@@ -17,48 +17,61 @@ class SessionController extends Controller
      * Get the status of the current user's shift including all running totals.
      */
     public function status(Request $request, BalanceService $balanceService)
-    {
-        $user = auth()->user();
-    
-        if ($user->hasRole(['admin', 'supervisor'])) {
-            // Admin/Supervisor: get all open shifts with user and company
-            $currentShifts = Shift::with(['user', 'company'])
-                ->where('status', 'open')
-                ->get();
-        } else {
-            // Normal users: only their own shifts with user and company
-            $currentShifts = Shift::with(['user', 'company'])
-                ->where('user_id', $user->id)
-                ->where('status', 'open')
-                ->get();
-        }
-    
-        // Map through shifts to calculate totals
-        $shiftsData = $currentShifts->map(function ($shift) use ($balanceService) {
-            $runningBalance = $balanceService->calculate($shift);
-            $totalPurchased = Purchase::where('shift_id', $shift->id)->sum('total_amount');
-            $totalTransactionFees = Purchase::where('shift_id', $shift->id)->sum('transaction_fee');
-            $totalExpenses = Expense::where('shift_id', $shift->id)->sum('amount');
-            $totalFloatReceived = FloatRequest::where('shift_id', $shift->id)
-                ->where('status', 'approved')
-                ->sum('amount');
-    
-            return [
-                'shift' => $shift,
-                'company_name' => $shift->company?->name ?? 'No Company Assigned',
-                'running_balance' => $runningBalance,
-                'total_purchased' => $totalPurchased,
-                'total_transaction_fees' => $totalTransactionFees,
-                'total_expenses' => $totalExpenses,
-                'total_float_received' => $totalFloatReceived,
-            ];
-        });
-    
-        return response()->json([
-            'shifts' => $shiftsData,
-            'message' => 'Active shifts fetched successfully'
-        ]);
+{
+    $user = auth()->user();
+    $isAdminOrSupervisor = $user->hasRole(['admin', 'supervisor']);
+
+    // 1. Fetch relevant open shifts
+    $query = Shift::where('status', 'open');
+
+    if (!$isAdminOrSupervisor) {
+        $query->where('user_id', $user->id);
     }
+
+    $openShifts = $query->get();
+
+    // 2. If no shifts are open, return an empty state early
+    if ($openShifts->isEmpty()) {
+        return response()->json([
+            'message' => 'No active shifts found.',
+            'data' => null
+        ], 200);
+    }
+
+    // 3. Calculate Totals (Aggregating if multiple shifts exist)
+    $grandRunningBalance = 0;
+    $grandTotalPurchased = 0;
+    $grandTotalFees = 0;
+    $grandTotalExpenses = 0;
+    $grandTotalFloat = 0;
+
+    foreach ($openShifts as $shift) {
+        $grandRunningBalance += $balanceService->calculate($shift);
+        $grandTotalPurchased += Purchase::where('shift_id', $shift->id)->sum('total_amount');
+        $grandTotalFees      += Purchase::where('shift_id', $shift->id)->sum('transaction_fee');
+        $grandTotalExpenses  += Expense::where('shift_id', $shift->id)->sum('amount');
+        $grandTotalFloat     += FloatRequest::where('shift_id', $shift->id)
+                                    ->where('status', 'approved')
+                                    ->sum('amount');
+    }
+
+    // 4. Return the single summary object
+    return response()->json([
+        'message' => $isAdminOrSupervisor ? 'Global active summary fetched' : 'Your active shift summary fetched',
+        'data' => [
+            'is_admin_view'          => $isAdminOrSupervisor,
+            'active_shifts_count'    => $openShifts->count(),
+            'running_balance'        => $grandRunningBalance,
+            'total_purchased'        => $grandTotalPurchased,
+            'total_transaction_fees' => $grandTotalFees,
+            'total_expenses'         => $grandTotalExpenses,
+            'total_float_received'   => $grandTotalFloat,
+            // Only include specific shift info if it's a single user shift
+            'shift_details'          => !$isAdminOrSupervisor ? $openShifts->first() : null,
+            'company_name'           => !$isAdminOrSupervisor ? $openShifts->first()->company?->name : 'All Companies',
+        ]
+    ]);
+}
     /**
      * Open a new shift.
      */
