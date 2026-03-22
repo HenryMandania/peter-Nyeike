@@ -117,47 +117,53 @@ class SessionController extends Controller
      * Includes validation to prevent closing if cash is less than system balance.
      */
     public function close(Request $request, BalanceService $balanceService)
-    {
-        $user = auth()->user();
+{
+    $user = auth()->user();
 
-        $shift = Shift::where('user_id', $user->id)
-            ->where('status', 'open')
-            ->first();
+    // 1. Automatically find the ONLY open shift for this user
+    $shift = Shift::where('user_id', $user->id)
+        ->where('status', 'open')
+        ->lockForUpdate() // Prevents duplicate closing if two requests hit at once
+        ->first();
 
-        if (!$shift) {
-            return response()->json(['message' => 'No active shift found.'], 404);
-        }
-
-        $validated = $request->validate([
-            'closing_balance' => 'required|numeric|min:0',
-            'closing_notes'   => 'nullable|string',
-        ]);
-
-        $systemBalance = $balanceService->calculate($shift);
-        $closingBalance = (float) $validated['closing_balance'];
-
-        // --- Shortage Validation ---
-        if ($closingBalance < $systemBalance) {
-            return response()->json([
-                'message' => 'Shift closure denied. The closing balance cannot be less than the system balance (Shortage detected).',
-                'system_balance' => $systemBalance,
-                'provided_balance' => $closingBalance,
-                'difference' => $systemBalance - $closingBalance
-            ], 422);
-        }
-
-        $shift->update([
-            'status'          => 'closed',
-            'closed_at'       => now(),
-            'system_balance'  => $systemBalance,
-            'closing_balance' => $closingBalance,
-            'cash_difference' => $closingBalance - $systemBalance,
-            'closing_notes'   => $validated['closing_notes'],
-        ]);
-
+    if (!$shift) {
         return response()->json([
-            'message' => 'Shift closed successfully',
-            'data'    => $shift
-        ]);
+            'message' => 'No active shift found to close.'
+        ], 404);
     }
+
+    $validated = $request->validate([
+        'closing_balance' => 'required|numeric|min:0',
+        'closing_notes'   => 'nullable|string',
+    ]);
+
+    // 2. Calculate final system balance using your service
+    $systemBalance = $balanceService->calculate($shift);
+    $closingBalance = (float) $validated['closing_balance'];
+
+    // 3. Shortage Validation (Business Rule: Cannot close with less cash than system expects)
+    if ($closingBalance < $systemBalance) {
+        return response()->json([
+            'message' => 'Shift closure denied. Shortage detected.',
+            'system_balance'   => $systemBalance,
+            'provided_balance' => $closingBalance,
+            'difference'       => $systemBalance - $closingBalance
+        ], 422);
+    }
+
+    // 4. Perform the Closure
+    $shift->update([
+        'status'          => 'closed',
+        'closed_at'       => now(),
+        'system_balance'  => $systemBalance,
+        'closing_balance' => $closingBalance,
+        'cash_difference' => $closingBalance - $systemBalance,
+        'closing_notes'   => $validated['closing_notes'],
+    ]);
+
+    return response()->json([
+        'message' => 'Shift closed successfully',
+        'data'    => $shift
+    ]);
+}
 }

@@ -48,7 +48,7 @@ Route::middleware('auth:sanctum')->group(function () {
     
     Route::middleware(['auth:sanctum'])->group(function () {
     Route::post('/float-requests', [FloatRequestController::class, 'store']);
-    Route::get('/float-requests/pending', [FloatRequestController::class, 'pending'])->middleware('permission:float-request.view');
+    Route::get('/float-requests/pending', [FloatRequestController::class, 'pending']);
     Route::post('/float-requests/{floatRequest}/approve', [FloatRequestController::class, 'approve'])->middleware('permission:float-request.approve');
     Route::post('/float-requests/{floatRequest}/reject', [FloatRequestController::class, 'reject'])->middleware('permission:float-request.reject');
     Route::get('float-requests', [FloatRequestController::class, 'index']);
@@ -62,10 +62,10 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::post('/logout', [AuthController::class, 'logout']);
 
-    Route::middleware(['auth:sanctum', 'role:admin|supervisor|clerk'])->group(function () {
-        Route::post('/mpesa/vendor-payment', [PaymentController::class, 'initiateVendorPayment']);
-        Route::post('/mpesa/purchase-message', [PaymentController::class, 'capturePurchaseMpesaMessage']);
-        Route::post('/mpesa/float-request-message', [PaymentController::class, 'captureFloatRequestMpesaMessage']);
-        Route::post('/mpesa/expense-message', [PaymentController::class, 'captureExpenseMpesaMessage']);
-    });
+Route::middleware(['auth:sanctum', 'role:admin|supervisor|clerk'])->group(function () {
+    Route::post('/mpesa/vendor-payment', [PaymentController::class, 'initiateVendorPayment']);
+    Route::post('/mpesa/purchase-message', [PaymentController::class, 'capturePurchaseMpesaMessage']);
+    Route::post('/mpesa/float-request-message', [PaymentController::class, 'captureFloatRequestMpesaMessage']);
+    Route::post('/mpesa/expense-message', [PaymentController::class, 'captureExpenseMpesaMessage']);
+});
 });
