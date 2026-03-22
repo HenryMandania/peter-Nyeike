@@ -143,36 +143,33 @@ class FloatRequestController extends Controller
     }
     
     public function index(Request $request): \Illuminate\Http\JsonResponse
-{
-    $user = \Illuminate\Support\Facades\Auth::user();
-
-    // Start query with eager loading
-    $query = \App\Models\FloatRequest::with([
-        'user:id,name',
-        'company:id,name',
-        'shift:id,status'
-    ]);
-
-    // 🔐 Restrict non-admin/supervisor users
-    if (
-        !$user->hasRole(['admin', 'supervisor']) &&
-        !$user->can('float_requests.view.all')
-    ) {
-        $query->where('user_id', $user->id);
+    {
+        $user = \Illuminate\Support\Facades\Auth::user();
+    
+        // Fix: Explicitly define table names in column selection to avoid ambiguity
+        $query = \App\Models\FloatRequest::with([
+            'user:users.id,name',        // Specified users.id
+            'company:companies.id,name',  // Specified companies.id
+            'shift:shifts.id,status'      // Specified shifts.id
+        ]);
+    
+        // ... rest of your logic remains the same
+        if (!$user->hasRole(['admin', 'supervisor']) && !$user->can('float_requests.view.all')) {
+            $query->where('user_id', $user->id);
+        }
+    
+        // Optional status filter
+        if ($request->query('status') === 'approved_unpaid') {
+            $query->where('status', 'approved');
+        } elseif ($request->filled('status')) {
+            $query->where('status', $request->status);
+        }
+    
+        $requests = $query->orderBy('created_at', 'desc')->paginate(15);
+    
+        return response()->json([
+            'message' => 'Float requests fetched successfully.',
+            'data'    => $requests
+        ], 200);
     }
-
-    // Optional status filter
-    if ($request->query('status') === 'approved_unpaid') {
-        $query->where('status', 'approved');
-    } elseif ($request->filled('status')) {
-        $query->where('status', $request->status);
-    }
-
-    $requests = $query->orderBy('created_at', 'desc')->paginate(15);
-
-    return response()->json([
-        'message' => 'Float requests fetched successfully.',
-        'data'    => $requests
-    ], 200);
-}
 }
