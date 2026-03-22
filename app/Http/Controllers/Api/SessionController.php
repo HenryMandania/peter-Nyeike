@@ -134,7 +134,7 @@ class SessionController extends Controller
 
     $validated = $request->validate([
         'closing_balance' => 'required|numeric|min:0',
-        'closing_notes'   => 'nullable|string',
+         
     ]);
 
     // 2. Calculate final system balance using your service
@@ -158,7 +158,7 @@ class SessionController extends Controller
         'system_balance'  => $systemBalance,
         'closing_balance' => $closingBalance,
         'cash_difference' => $closingBalance - $systemBalance,
-        'closing_notes'   => $validated['closing_notes'],
+         
     ]);
 
     return response()->json([
