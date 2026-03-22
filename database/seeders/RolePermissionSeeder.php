@@ -57,7 +57,7 @@ class RolePermissionSeeder extends Seeder
         // 3️⃣ Create Sanctum Permissions (API Only)
         $apiPermissions = [
             'purchase.view', 'purchase.create', 'purchase.approve', 
-            'floatrequest.view', 'floatrequest.create', 'floatrequest.approve', 'floatrequest.reject',
+            'float-request.view', 'float-request.create', 'float-request.approve', 'float-request.reject',
             'dashboard.view'
         ];
         foreach ($apiPermissions as $perm) {
@@ -81,7 +81,7 @@ class RolePermissionSeeder extends Seeder
         // Field Operator: Limited Create/View access
         Role::findByName('field-operator', 'web')->syncPermissions([
             'expense.create', 'expense.view', 'expensecategory.view',
-            'floatrequest.view', 'floatrequest.create', 'item.create', 'item.view',
+            'float-request.view', 'float-request.create', 'item.create', 'item.view',
             'purchase.create', 'purchase.view', 'shift.create', 'shift.view', 
             'supplier.create', 'supplier.view', 'dashboard.view'
         ]);

@@ -17,47 +17,48 @@ class SessionController extends Controller
      * Get the status of the current user's shift including all running totals.
      */
     public function status(Request $request, BalanceService $balanceService)
-{
-    $user = auth()->user();
-
-    if ($user->hasRole(['admin', 'supervisor'])) {
-        // Admin/Supervisor: get all open shifts
-        $currentShifts = Shift::with('user')
-            ->where('status', 'open')
-            ->get();
-    } else {
-        // Normal users: only their own
-        $currentShifts = Shift::with('user')
-            ->where('user_id', $user->id)
-            ->where('status', 'open')
-            ->get();
+    {
+        $user = auth()->user();
+    
+        if ($user->hasRole(['admin', 'supervisor'])) {
+            // Admin/Supervisor: get all open shifts with user and company
+            $currentShifts = Shift::with(['user', 'company'])
+                ->where('status', 'open')
+                ->get();
+        } else {
+            // Normal users: only their own shifts with user and company
+            $currentShifts = Shift::with(['user', 'company'])
+                ->where('user_id', $user->id)
+                ->where('status', 'open')
+                ->get();
+        }
+    
+        // Map through shifts to calculate totals
+        $shiftsData = $currentShifts->map(function ($shift) use ($balanceService) {
+            $runningBalance = $balanceService->calculate($shift);
+            $totalPurchased = Purchase::where('shift_id', $shift->id)->sum('total_amount');
+            $totalTransactionFees = Purchase::where('shift_id', $shift->id)->sum('transaction_fee');
+            $totalExpenses = Expense::where('shift_id', $shift->id)->sum('amount');
+            $totalFloatReceived = FloatRequest::where('shift_id', $shift->id)
+                ->where('status', 'approved')
+                ->sum('amount');
+    
+            return [
+                'shift' => $shift,
+                'company_name' => $shift->company?->name ?? 'No Company Assigned',
+                'running_balance' => $runningBalance,
+                'total_purchased' => $totalPurchased,
+                'total_transaction_fees' => $totalTransactionFees,
+                'total_expenses' => $totalExpenses,
+                'total_float_received' => $totalFloatReceived,
+            ];
+        });
+    
+        return response()->json([
+            'shifts' => $shiftsData,
+            'message' => 'Active shifts fetched successfully'
+        ]);
     }
-
-    // For normal users, you can still calculate totals per shift
-    $shiftsData = $currentShifts->map(function ($shift) use ($balanceService) {
-        $runningBalance = $balanceService->calculate($shift);
-        $totalPurchased = Purchase::where('shift_id', $shift->id)->sum('total_amount');
-        $totalTransactionFees = Purchase::where('shift_id', $shift->id)->sum('transaction_fee');
-        $totalExpenses = Expense::where('shift_id', $shift->id)->sum('amount');
-        $totalFloatReceived = FloatRequest::where('shift_id', $shift->id)
-            ->where('status', 'approved')
-            ->sum('amount');
-
-        return [
-            'shift' => $shift,
-            'running_balance' => $runningBalance,
-            'total_purchased' => $totalPurchased,
-            'total_transaction_fees' => $totalTransactionFees,
-            'total_expenses' => $totalExpenses,
-            'total_float_received' => $totalFloatReceived,
-        ];
-    });
-
-    return response()->json([
-        'shifts' => $shiftsData,
-        'message' => 'Active shifts fetched successfully'
-    ]);
-}
     /**
      * Open a new shift.
      */
