@@ -21,8 +21,8 @@ class SessionController extends Controller
     $user = auth()->user();
     $isAdminOrSupervisor = $user->hasRole(['admin', 'supervisor']);
 
-    // 1. Fetch relevant open shifts
-    $query = Shift::where('status', 'open');
+    // 1. Fetch relevant open shifts (Admin sees all, User sees self)
+    $query = Shift::with(['user', 'company'])->where('status', 'open');
 
     if (!$isAdminOrSupervisor) {
         $query->where('user_id', $user->id);
@@ -30,7 +30,6 @@ class SessionController extends Controller
 
     $openShifts = $query->get();
 
-    // 2. If no shifts are open, return an empty state early
     if ($openShifts->isEmpty()) {
         return response()->json([
             'message' => 'No active shifts found.',
@@ -38,13 +37,14 @@ class SessionController extends Controller
         ], 200);
     }
 
-    // 3. Calculate Totals (Aggregating if multiple shifts exist)
+    // 2. Variables for Aggregation
     $grandRunningBalance = 0;
     $grandTotalPurchased = 0;
     $grandTotalFees = 0;
     $grandTotalExpenses = 0;
     $grandTotalFloat = 0;
 
+    // 3. Process Aggregations
     foreach ($openShifts as $shift) {
         $grandRunningBalance += $balanceService->calculate($shift);
         $grandTotalPurchased += Purchase::where('shift_id', $shift->id)->sum('total_amount');
@@ -55,20 +55,37 @@ class SessionController extends Controller
                                     ->sum('amount');
     }
 
-    // 4. Return the single summary object
+    // 4. Identify if the current Admin/Supervisor has a personal active shift
+    $myPersonalShift = $openShifts->firstWhere('user_id', $user->id);
+    $personalShiftData = null;
+
+    if ($myPersonalShift) {
+        $personalShiftData = [
+            'shift_details'   => $myPersonalShift,
+            'running_balance' => $balanceService->calculate($myPersonalShift),
+            'company_name'    => $myPersonalShift->company?->name ?? 'Internal',
+        ];
+    }
+
+    // 5. Build the Response
     return response()->json([
         'message' => $isAdminOrSupervisor ? 'Global active summary fetched' : 'Your active shift summary fetched',
         'data' => [
             'is_admin_view'          => $isAdminOrSupervisor,
             'active_shifts_count'    => $openShifts->count(),
-            'running_balance'        => $grandRunningBalance,
+            'global_running_balance' => $grandRunningBalance,
             'total_purchased'        => $grandTotalPurchased,
             'total_transaction_fees' => $grandTotalFees,
             'total_expenses'         => $grandTotalExpenses,
             'total_float_received'   => $grandTotalFloat,
-            // Only include specific shift info if it's a single user shift
-            'shift_details'          => !$isAdminOrSupervisor ? $openShifts->first() : null,
-            'company_name'           => !$isAdminOrSupervisor ? $openShifts->first()->company?->name : 'All Companies',
+            
+            // If Admin has a shift, it shows here. If User, it shows their only shift.
+            'personal_shift'         => $personalShiftData,
+            
+            // For convenience in UI
+            'company_name'           => !$isAdminOrSupervisor && $myPersonalShift 
+                                        ? $myPersonalShift->company?->name 
+                                        : 'All Companies',
         ]
     ]);
 }
