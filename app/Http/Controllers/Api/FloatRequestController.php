@@ -12,12 +12,25 @@ use Illuminate\Http\JsonResponse;
 
 class FloatRequestController extends Controller
 {
-    public function pending()
+    /**
+     * Get pending float requests.
+     * Admins/Supervisors see all; others see only their own.
+     */
+    public function pending(): JsonResponse
     {
-        $pendingRequests = FloatRequest::with(['user', 'shift'])
-            ->where('status', 'pending')
-            ->orderBy('created_at', 'desc')
-            ->get();
+        $user = Auth::user();
+        
+        $query = FloatRequest::with(['user', 'shift'])
+            ->where('status', 'pending');
+
+        // Check if user has administrative privileges
+        $isAdminOrSupervisor = $user->hasRole(['admin', 'supervisor']) || $user->can('float_requests.view.all');
+
+        if (!$isAdminOrSupervisor) {
+            $query->where('user_id', $user->id);
+        }
+
+        $pendingRequests = $query->orderBy('created_at', 'desc')->get();
 
         return response()->json([
             'message' => 'Pending float requests fetched successfully.',
@@ -28,10 +41,11 @@ class FloatRequestController extends Controller
     /**
      * Approve Float Request
      */
-    public function approve(FloatRequest $floatRequest)
+    public function approve(FloatRequest $floatRequest): JsonResponse
     {
         $user = Auth::user();
 
+        // Safety check: Cannot approve own request
         if ($floatRequest->user_id === $user->id) {
             return response()->json([
                 'message' => 'You cannot approve your own request.'
@@ -39,33 +53,24 @@ class FloatRequestController extends Controller
         }
 
         $response = DB::transaction(function () use ($floatRequest, $user) {
-
+            // Lock the record to prevent race conditions
             $floatRequest = FloatRequest::lockForUpdate()->find($floatRequest->id);
 
             if (!$floatRequest) {
-                return [
-                    'status' => 404,
-                    'message' => 'Float request not found.'
-                ];
+                return ['status' => 404, 'message' => 'Float request not found.'];
             }
 
             if ($floatRequest->status !== 'pending') {
-                return [
-                    'status' => 422,
-                    'message' => 'This request has already been processed.'
-                ];
+                return ['status' => 422, 'message' => 'This request has already been processed.'];
             }
 
             $shift = Shift::lockForUpdate()->find($floatRequest->shift_id);
 
             if (!$shift || $shift->status !== 'open') {
-                return [
-                    'status' => 422,
-                    'message' => 'Associated shift not found or already closed.'
-                ];
+                return ['status' => 422, 'message' => 'Associated shift not found or already closed.'];
             }
 
-            // Correct column
+            // Increment the system balance of the shift
             $shift->increment('system_balance', $floatRequest->amount);
 
             $floatRequest->update([
@@ -87,7 +92,7 @@ class FloatRequestController extends Controller
     /**
      * Reject Float Request
      */
-    public function reject(FloatRequest $floatRequest)
+    public function reject(FloatRequest $floatRequest): JsonResponse
     {
         $user = Auth::user();
 
@@ -111,7 +116,7 @@ class FloatRequestController extends Controller
     /**
      * Create Float Request
      */
-    public function store(Request $request)
+    public function store(Request $request): JsonResponse
     {
         $user = Auth::user();
 
@@ -142,23 +147,25 @@ class FloatRequestController extends Controller
         ], 201);
     }
     
-    public function index(Request $request): \Illuminate\Http\JsonResponse
+    /**
+     * View history of float requests (Paginated)
+     */
+    public function index(Request $request): JsonResponse
     {
-        $user = \Illuminate\Support\Facades\Auth::user();
+        $user = Auth::user();
     
-        // Fix: Explicitly define table names in column selection to avoid ambiguity
-        $query = \App\Models\FloatRequest::with([
-            'user:users.id,name',        // Specified users.id
-            'company:companies.id,name',  // Specified companies.id
-            'shift:shifts.id,status'      // Specified shifts.id
+        $query = FloatRequest::with([
+            'user:id,name',
+            'company:id,name',
+            'shift:id,status'
         ]);
     
-        // ... rest of your logic remains the same
+        // Role-based visibility
         if (!$user->hasRole(['admin', 'supervisor']) && !$user->can('float_requests.view.all')) {
             $query->where('user_id', $user->id);
         }
     
-        // Optional status filter
+        // Filter by status if provided
         if ($request->query('status') === 'approved_unpaid') {
             $query->where('status', 'approved');
         } elseif ($request->filled('status')) {
@@ -169,7 +176,7 @@ class FloatRequestController extends Controller
     
         return response()->json([
             'message' => 'Float requests fetched successfully.',
-            'data'    => $requests
+            'data' => $requests
         ], 200);
     }
 }
