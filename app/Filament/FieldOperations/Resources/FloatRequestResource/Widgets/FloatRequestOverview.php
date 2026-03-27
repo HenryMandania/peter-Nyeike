@@ -5,6 +5,7 @@ namespace App\Filament\FieldOperations\Resources\FloatRequestResource\Widgets;
 use App\Models\FloatRequest;
 use Filament\Widgets\StatsOverviewWidget as BaseWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
+use Illuminate\Support\Facades\Auth;
 
 class FloatRequestOverview extends BaseWidget
 {
@@ -12,10 +13,18 @@ class FloatRequestOverview extends BaseWidget
 
     protected function getStats(): array
     {
+        $user = Auth::user();
+        
+        // Apply scope: Admins/Supervisors see all, others see only theirs
         $query = FloatRequest::query();
+        
+        if (!$user->hasAnyRole(['admin', 'supervisor'])) {
+            $query->where('user_id', $user->id);
+        }
+
+        // Aggregate statistics from the scoped query
         $totalCount = $query->count();
         $totalAmount = $query->sum('amount');
-
         $approvedCount = $query->clone()->where('status', 'approved')->count();
         $pendingCount = $query->clone()->where('status', 'pending')->count();
         $rejectedCount = $query->clone()->where('status', 'rejected')->count();
@@ -24,13 +33,14 @@ class FloatRequestOverview extends BaseWidget
         $pendingRate = $totalCount > 0 ? round(($pendingCount / $totalCount) * 100) : 0;
         $rejectionRate = $totalCount > 0 ? round(($rejectedCount / $totalCount) * 100, 1) : 0;
 
-        $recentData = FloatRequest::orderBy('created_at', 'desc')
+        // Ensure the chart data is also scoped correctly
+        $recentData = (clone $query)
+            ->orderBy('created_at', 'desc')
             ->limit(15)
             ->get()
             ->reverse();
 
         return [
-
             // 💰 TOTAL FLOAT REQUESTED
             Stat::make(
                 'Total Float Requested',

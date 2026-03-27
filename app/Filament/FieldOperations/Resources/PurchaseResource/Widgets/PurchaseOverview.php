@@ -6,12 +6,13 @@ use App\Models\Purchase;
 use Filament\Widgets\StatsOverviewWidget as BaseWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Database\Eloquent\Builder;
 
 class PurchaseOverview extends BaseWidget
 {
     protected static ?string $pollingInterval = '15s';
 
-    // This forces the grid to have 4 columns on desktop screens
     protected int | string | array $columnSpan = 'full';
 
     protected function getColumns(): int
@@ -21,19 +22,32 @@ class PurchaseOverview extends BaseWidget
 
     protected function getStats(): array
     {
+        $user = Auth::user();
+        $isAdmin = $user->hasAnyRole(['admin', 'supervisor']);
+
+        // Define the base query once to reuse logic
+        $baseQuery = Purchase::query()
+            ->when(!$isAdmin, fn (Builder $query) => 
+                $query->whereHas('shift', fn ($q) => $q->where('user_id', $user->id))
+            );
+
         // --- Purchase Metrics ---
-        $totalWeight = Purchase::sum('quantity');
-        $averagePrice = Purchase::avg('unit_price') ?? 0;
-        $totalFees = Purchase::sum('transaction_fee');
-        $grandTotal = Purchase::sum('total_amount');
+        $totalWeight = (float) $baseQuery->clone()->sum('quantity');
+        $averagePrice = (float) $baseQuery->clone()->avg('unit_price') ?? 0;
+        $totalFees = (float) $baseQuery->clone()->sum('transaction_fee');
+        $grandTotal = (float) $baseQuery->clone()->sum('total_amount');
 
         // --- Sales & Profit Metrics ---
-        $totalSales = Purchase::where('is_sold', true)->sum('sales_amount');
-        $totalProfit = Purchase::where('is_sold', true)->sum('gross_profit');
-        $pendingSalesCount = Purchase::where('is_sold', false)->whereNotNull('approved_by')->count();
+        $totalSales = (float) $baseQuery->clone()->where('is_sold', true)->sum('sales_amount');
+        $totalProfit = (float) $baseQuery->clone()->where('is_sold', true)->sum('gross_profit');
+        $pendingSalesCount = $baseQuery->clone()
+            ->where('is_sold', false)
+            ->whereNotNull('approved_by')
+            ->count();
+            
         $avgProfitMargin = $totalSales > 0 ? ($totalProfit / $totalSales) * 100 : 0;
 
-        $charts = $this->getChartData();
+        $charts = $this->getChartData($isAdmin, $user->id);
 
         return [
             // Row 1: Purchases
@@ -53,7 +67,7 @@ class PurchaseOverview extends BaseWidget
             Stat::make('Total Fees', 'KES ' . number_format($totalFees, 2))
                 ->description('Transaction charges')
                 ->chart($charts['fees'])
-                ->color('warning') // Changed from danger for better UI feel
+                ->color('warning')
                 ->icon('heroicon-m-banknotes'),
 
             Stat::make('Grand Total Cost', 'KES ' . number_format($grandTotal, 2))
@@ -89,9 +103,13 @@ class PurchaseOverview extends BaseWidget
         ];
     }
 
-    protected function getChartData(): array
+    protected function getChartData(bool $isAdmin, int $userId): array
     {
-        $data = Purchase::select([
+        $data = Purchase::query()
+            ->when(!$isAdmin, fn (Builder $query) => 
+                $query->whereHas('shift', fn ($q) => $q->where('user_id', $userId))
+            )
+            ->select([
                 DB::raw('SUM(quantity) as weight'),
                 DB::raw('SUM(transaction_fee) as fees'),
                 DB::raw('SUM(total_amount) as total'),

@@ -2,17 +2,18 @@
 
 namespace App\Filament\FieldOperations\Resources\PurchaseResource\Pages;
 
-use Filament\Actions\CreateAction;
 use App\Filament\FieldOperations\Resources\PurchaseResource;
 use Filament\Actions;
+use Filament\Actions\CreateAction;
 use Filament\Resources\Pages\ListRecords;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\Auth;
 
 class ListPurchases extends ListRecords
 {
     protected static string $resource = PurchaseResource::class;
 
-    // Add this method to refresh the table every 5 seconds
-    protected function getDefaultTablePollingInterval(): ?string
+     protected function getDefaultTablePollingInterval(): ?string
     {
         return '5s';
     }
@@ -29,5 +30,21 @@ class ListPurchases extends ListRecords
         return [
             PurchaseResource\Widgets\PurchaseOverview::class,
         ];
+    }
+   
+    protected function getTableQuery(): ?Builder
+    {
+        $user = Auth::user();
+        $query = parent::getTableQuery();
+
+        
+        if ($user->hasAnyRole(['admin', 'supervisor'])) {
+            return $query;
+        }
+
+        
+        return $query->whereHas('shift', function (Builder $query) use ($user) {
+            $query->where('user_id', $user->id);
+        });
     }
 }

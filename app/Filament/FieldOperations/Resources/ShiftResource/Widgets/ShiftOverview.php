@@ -9,14 +9,14 @@ use App\Models\FloatRequest;
 use App\Services\BalanceService;
 use Filament\Widgets\StatsOverviewWidget as BaseWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Database\Eloquent\Builder;
 
 class ShiftStatsOverview extends BaseWidget
 {
     protected static ?string $pollingInterval = '15s';
     protected int | string | array $columnSpan = 'full';
 
-    // Set this to 4 to ensure 4 widgets per row
     protected function getColumns(): int
     {
         return 4;
@@ -24,22 +24,41 @@ class ShiftStatsOverview extends BaseWidget
 
     protected function getStats(): array
     {
+        $user = Auth::user();
+        // Adjust these role names to match your actual Spatie roles or custom logic
+        $isAdmin = $user->hasAnyRole(['admin', 'supervisor']);
         $service = new BalanceService();
-        
-        $purchaseStats = Purchase::query()
+
+        // 1. Define Base Queries with Relationship-Based Filtering
+        // Purchases and Expenses are linked to User via the Shift model
+        $purchaseQuery = Purchase::query()
+            ->when(!$isAdmin, fn (Builder $query) => 
+                $query->whereHas('shift', fn ($q) => $q->where('user_id', $user->id))
+            );
+            
+        $expenseQuery = Expense::query()
+            ->when(!$isAdmin, fn (Builder $query) => 
+                $query->whereHas('shift', fn ($q) => $q->where('user_id', $user->id))
+            );
+
+        $shiftQuery = Shift::query()
+            ->when(!$isAdmin, fn (Builder $query) => $query->where('user_id', $user->id));
+
+        // 2. Aggregate Data
+        $purchaseStats = $purchaseQuery
             ->selectRaw('SUM(total_amount) as total_val, SUM(transaction_fee) as fees, COUNT(*) as qty, SUM(sales_amount) as total_sales, SUM(gross_profit) as total_profit')
             ->first();
-            
-        $totalExpenses = Expense::sum('amount');
-        $activeShifts = Shift::where('status', 'open')->count();
-        
-        // Total Liquidity across all shifts
-        $totalRunningBalance = Shift::all()->reduce(fn ($carry, $shift) => $carry + $service->calculate($shift), 0);
 
-        $trends = $this->getTrends();
+        $totalExpenses = $expenseQuery->sum('amount');
+        $activeShifts = $shiftQuery->clone()->where('status', 'open')->count();
+        
+        // Calculate Liquidity (Filtered by User if not admin)
+        $totalRunningBalance = $shiftQuery->get()
+            ->reduce(fn ($carry, $shift) => $carry + $service->calculate($shift), 0);
+
+        $trends = $this->getTrends($isAdmin, $user->id);
 
         return [
-            // ROW 1
             Stat::make('Active Shifts', $activeShifts)
                 ->description($activeShifts > 0 ? 'Operations ongoing' : 'All closed')
                 ->descriptionIcon('heroicon-m-user-group')
@@ -62,10 +81,9 @@ class ShiftStatsOverview extends BaseWidget
             Stat::make('Net Profit', 'KES ' . number_format($purchaseStats->total_profit ?? 0, 0))
                 ->description('Revenue vs Total Cost')
                 ->chart($trends['profit'])
-                ->color($purchaseStats->total_profit >= 0 ? 'success' : 'danger')
+                ->color(($purchaseStats->total_profit ?? 0) >= 0 ? 'success' : 'danger')
                 ->icon('heroicon-m-presentation-chart-line'),
 
-            // ROW 2
             Stat::make('Total Expenses', 'KES ' . number_format($totalExpenses, 0))
                 ->description('Operational overhead')
                 ->chart($trends['expenses'])
@@ -85,41 +103,46 @@ class ShiftStatsOverview extends BaseWidget
                 ->icon('heroicon-m-credit-card'),
 
             Stat::make('Network Liquidity', 'KES ' . number_format($totalRunningBalance, 0))
-                ->description('Cash in circulation')
+                ->description($isAdmin ? 'Total Network Cash' : 'Your current float')
                 ->chart($trends['liquidity'])
                 ->color('primary')
                 ->icon('heroicon-m-banknotes'),
         ];
     }
 
-    protected function getTrends(): array
+    protected function getTrends(bool $isAdmin, int $userId): array
     {
         $days = collect(range(6, 0))->map(fn ($i) => now()->subDays($i)->format('Y-m-d'));
 
-        // 1. Shift Trends
         $shiftData = Shift::query()
+            ->when(!$isAdmin, fn ($query) => $query->where('user_id', $userId))
             ->selectRaw('DATE(opened_at) as date, COUNT(*) as qty')
             ->where('opened_at', '>=', now()->subDays(7))
             ->groupBy('date')
             ->pluck('qty', 'date');
 
-        // 2. Purchase, Sales, Profit & Fees Trends
         $purchaseData = Purchase::query()
+            ->when(!$isAdmin, fn ($query) => 
+                $query->whereHas('shift', fn ($q) => $q->where('user_id', $userId))
+            )
             ->selectRaw('DATE(created_at) as date, SUM(total_amount) as total, SUM(transaction_fee) as fees, COUNT(*) as qty, SUM(sales_amount) as sales, SUM(gross_profit) as profit')
             ->where('created_at', '>=', now()->subDays(7))
             ->groupBy('date')
             ->get()
             ->keyBy('date');
 
-        // 3. Expense Trends
         $expenseData = Expense::query()
+            ->when(!$isAdmin, fn ($query) => 
+                $query->whereHas('shift', fn ($q) => $q->where('user_id', $userId))
+            )
             ->selectRaw('DATE(created_at) as date, SUM(amount) as total')
             ->where('created_at', '>=', now()->subDays(7))
             ->groupBy('date')
             ->pluck('total', 'date');
 
-        // 4. Liquidity Trend
+        // Assuming FloatRequest has a direct user_id or shift relationship
         $liquidityData = FloatRequest::query()
+            ->when(!$isAdmin, fn ($query) => $query->where('user_id', $userId))
             ->where('status', 'approved')
             ->selectRaw('DATE(updated_at) as date, SUM(amount) as total')
             ->where('updated_at', '>=', now()->subDays(7))

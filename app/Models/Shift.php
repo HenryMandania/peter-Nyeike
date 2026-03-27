@@ -27,51 +27,41 @@ class Shift extends Model
     protected $casts = [
         'opened_at' => 'datetime',
         'closed_at' => 'datetime',
+        'opening_balance' => 'float',
+        'closing_balance' => 'float',
+        'system_balance' => 'float',
     ];
 
     protected static function booted(): void
-{
-    static::creating(function ($shift) {
-        $shift->user_id = Auth::id();
-        $shift->created_by = Auth::id();
-        $shift->opened_at = now();
-        $shift->status = 'open';
-
-        // 1. Fetch last shift's closing balance
-        $lastClosing = static::where('user_id', Auth::id())
-            ->where('status', 'closed')
-            ->orderBy('closed_at', 'desc')
-            ->value('closing_balance') ?? 0;
-
-        // 2. Set opening balance automatically if not manually provided
-        $shift->opening_balance = $lastClosing;
-
-        // 3. Sync initial system balance to the opening balance
-        $shift->system_balance = $lastClosing;
-        $shift->closing_balance = 0; // Reset closing until shift is actually closed
-    });
-}
-
-    public function floatRequests(): HasMany
     {
-        return $this->hasMany(FloatRequest::class);
+        static::creating(function ($shift) {
+            // Set defaults only if they aren't already set by the Controller
+            $shift->user_id = $shift->user_id ?? Auth::id();
+            $shift->created_by = $shift->created_by ?? Auth::id();
+            $shift->opened_at = $shift->opened_at ?? now();
+            $shift->status = $shift->status ?? 'open';
+
+            // Automatic balance logic: ONLY run if opening_balance wasn't passed manually
+            if (is_null($shift->opening_balance)) {
+                $lastClosing = static::where('user_id', $shift->user_id)
+                    ->where('status', 'closed')
+                    ->orderBy('closed_at', 'desc')
+                    ->value('closing_balance') ?? 0;
+
+                $shift->opening_balance = $lastClosing;
+            }
+
+            // Always sync system_balance to opening_balance at start
+            $shift->system_balance = $shift->opening_balance;
+            $shift->closing_balance = 0; 
+        });
     }
 
-    public function purchases(): HasMany
-    {
-        return $this->hasMany(Purchase::class);
-    }
-
-    public function expenses(): HasMany
-    {
-        return $this->hasMany(Expense::class);
-    }
-    
-    public function company(): BelongsTo
-    {
-        return $this->belongsTo(Company::class);
-    }
-
+    // Relationships
+    public function floatRequests(): HasMany { return $this->hasMany(FloatRequest::class); }
+    public function purchases(): HasMany { return $this->hasMany(Purchase::class); }
+    public function expenses(): HasMany { return $this->hasMany(Expense::class); }
+    public function company(): BelongsTo { return $this->belongsTo(Company::class); }
     public function user(): BelongsTo { return $this->belongsTo(User::class, 'user_id'); }
     public function creator(): BelongsTo { return $this->belongsTo(User::class, 'created_by'); }
 }

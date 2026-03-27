@@ -6,23 +6,29 @@ use App\Models\Shift;
 
 class BalanceService
 {
+   
     public function calculate(Shift $shift): float
     {
-        $opening = (float) $shift->opening_balance;
+        
+        $opening = (float) ($shift->opening_balance ?? 0);
 
-        $topups = (float) $shift->floatRequests()
+     
+        $topups = (float) ($shift->total_float ?? $shift->floatRequests()
             ->where('status', 'approved')
-            ->sum('amount');
+            ->sum('amount'));
 
-        $purchases = (float) $shift->purchases()
-            ->sum('total_amount');
+        
+        $purchases = (float) ($shift->total_purchased ?? $shift->purchases()
+            ->sum('total_amount'));
 
-        $fees = (float) $shift->purchases()
-            ->sum('transaction_fee');
+      
+        $fees = (float) ($shift->total_fees ?? $shift->purchases()
+            ->sum('transaction_fee'));
 
-        $expenses = (float) $shift->expenses()
-            ->sum('amount');
-
+      
+        $expenses = (float) ($shift->total_expenses ?? $shift->expenses()
+            ->sum('amount'));
+       
         return ($opening + $topups) - ($purchases + $fees + $expenses);
     }
 }
