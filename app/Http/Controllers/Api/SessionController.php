@@ -15,7 +15,7 @@ class SessionController extends Controller
 {
     /**
      * Get the status of the current user's shift including all running totals.
-     * Optimized using withSum to prevent N+1 query overhead.
+     * Includes a forced reload of the company relation to ensure the name updates.
      */
     public function status(Request $request, BalanceService $balanceService)
     {
@@ -26,12 +26,12 @@ class SessionController extends Controller
                 return response()->json(['message' => 'Unauthenticated', 'data' => null], 401);
             }
             
-            // Safe role check
+            // Safe role check for admin/supervisor views
             $isAdminOrSupervisor = method_exists($user, 'hasAnyRole') 
                 ? $user->hasAnyRole(['admin', 'supervisor']) 
                 : false;
 
-            // 1. Fetch shifts with sub-totals pre-calculated by the database
+            // 1. Fetch open shifts with calculated sums from the database
             $query = Shift::with(['user', 'company'])
                 ->where('status', 'open')
                 ->withSum('purchases as total_purchased', 'total_amount')
@@ -47,7 +47,7 @@ class SessionController extends Controller
 
             $openShifts = $query->get();
 
-            // Handle no active shifts gracefully - Return 0s instead of nulls
+            // Handle no active shifts gracefully
             if ($openShifts->isEmpty()) {
                 return response()->json([
                     'message' => 'No active shifts found.',
@@ -65,13 +65,12 @@ class SessionController extends Controller
                 ], 200);
             }
 
-            // 2. Aggregate sums - Ensure float casting
+            // 2. Aggregate running totals
             $grandTotalPurchased = (float) $openShifts->sum('total_purchased');
             $grandTotalFees      = (float) $openShifts->sum('total_fees');
             $grandTotalExpenses  = (float) $openShifts->sum('total_expenses');
             $grandTotalFloat     = (float) $openShifts->sum('total_float');
             
-            // Safe calculation for the grand balance
             $grandRunningBalance = (float) $openShifts->sum(function($shift) use ($balanceService) {
                 try {
                     return $balanceService->calculate($shift);
@@ -81,11 +80,14 @@ class SessionController extends Controller
                 }
             });
 
-            // 3. Identify personal active shift
+            // 3. Prepare personal shift data
             $myPersonalShift = $openShifts->firstWhere('user_id', $user->id);
             $personalShiftData = null;
 
             if ($myPersonalShift) {
+                // IMPORTANT: Force reload company to ensure name changes reflect immediately
+                $myPersonalShift->load('company');
+
                 $personalShiftData = [
                     'shift_details' => [
                         'id' => $myPersonalShift->id,
@@ -93,9 +95,10 @@ class SessionController extends Controller
                         'system_balance' => (float)$myPersonalShift->system_balance,
                         'status' => $myPersonalShift->status,
                         'opened_at' => $myPersonalShift->opened_at,
+                        'company_id' => $myPersonalShift->company_id,
                     ],
                     'running_balance' => (float)$balanceService->calculate($myPersonalShift),
-                    'company_name' => $myPersonalShift->company?->name ?? 'Internal',
+                    'company_name' => $myPersonalShift->company?->name ?? 'Internal/Default',
                 ];
             }
 
@@ -117,46 +120,64 @@ class SessionController extends Controller
             
         } catch (\Exception $e) {
             Log::error('Session status error: ' . $e->getMessage());
-            return response()->json(['message' => 'Server Error', 'error' => $e->getMessage()], 500);
+            return response()->json([
+                'message' => 'Server Error', 
+                'error' => config('app.debug') ? $e->getMessage() : 'Internal Server Error'
+            ], 500);
         }
     }
 
+    /**
+     * Helper to determine which company name to show in the header
+     */
     private function getCompanyName($isAdmin, $shift) {
-        if (!$isAdmin && $shift) return $shift->company?->name ?? 'Company Unavailable';
+        if (!$isAdmin && $shift) {
+            return $shift->company?->name ?? 'Company Unavailable';
+        }
         return 'All Companies';
     }
 
+    /**
+     * Open a new shift
+     */
     public function open(Request $request)
     {
-        $user = auth()->user();
-        $request->validate(['company_id' => 'required|exists:companies,id']);
+        try {
+            $user = auth()->user();
+            $request->validate(['company_id' => 'required|exists:companies,id']);
 
-        if (Shift::where('user_id', $user->id)->where('status', 'open')->exists()) {
-            return response()->json(['message' => 'Shift already open.'], 400);
+            if (Shift::where('user_id', $user->id)->where('status', 'open')->exists()) {
+                return response()->json(['message' => 'You already have an open shift.'], 400);
+            }
+
+            if (FloatRequest::where('user_id', $user->id)->where('status', 'pending')->exists()) {
+                return response()->json(['message' => 'Pending float request must be resolved first.'], 403);
+            }
+
+            $lastClosing = Shift::where('user_id', $user->id)
+                ->where('status', 'closed')
+                ->orderBy('closed_at', 'desc')
+                ->value('closing_balance') ?? 0;
+
+            $session = Shift::create([
+                'user_id' => $user->id,
+                'company_id' => $request->company_id,
+                'opening_balance' => $lastClosing,
+                'system_balance' => $lastClosing,
+                'status' => 'open',
+                'opened_at' => now(),
+                'created_by' => $user->id,
+            ]);
+
+            return response()->json(['message' => 'Shift opened successfully', 'data' => $session], 201);
+        } catch (\Exception $e) {
+            return response()->json(['message' => 'Failed to open shift', 'error' => $e->getMessage()], 500);
         }
-
-        if (FloatRequest::where('user_id', $user->id)->where('status', 'pending')->exists()) {
-            return response()->json(['message' => 'Pending float request exists.'], 403);
-        }
-
-        $lastClosing = Shift::where('user_id', $user->id)
-            ->where('status', 'closed')
-            ->orderBy('closed_at', 'desc')
-            ->value('closing_balance') ?? 0;
-
-        $session = Shift::create([
-            'user_id' => $user->id,
-            'company_id' => $request->company_id,
-            'opening_balance' => $lastClosing,
-            'system_balance' => $lastClosing,
-            'status' => 'open',
-            'opened_at' => now(),
-            'created_by' => $user->id,
-        ]);
-
-        return response()->json(['message' => 'Shift opened', 'data' => $session], 201);
     }
 
+    /**
+     * Close the active shift
+     */
     public function close(Request $request, BalanceService $balanceService)
     {
         $user = auth()->user();
@@ -164,24 +185,19 @@ class SessionController extends Controller
         return DB::transaction(function () use ($user, $request, $balanceService) {
             $shift = Shift::where('user_id', $user->id)
                 ->where('status', 'open')
-                ->withSum('purchases as total_purchased', 'total_amount')
-                ->withSum('purchases as total_fees', 'transaction_fee')
-                ->withSum('expenses as total_expenses', 'amount')
-                ->withSum(['floatRequests as total_float' => function ($query) {
-                    $query->where('status', 'approved');
-                }], 'amount')
                 ->lockForUpdate() 
                 ->first();
 
-            if (!$shift) return response()->json(['message' => 'No active shift.'], 404);
+            if (!$shift) return response()->json(['message' => 'No active shift found.'], 404);
 
             $validated = $request->validate(['closing_balance' => 'required|numeric|min:0']);
+            
             $systemBalance = (float)$balanceService->calculate($shift);
             $closingBalance = (float)$validated['closing_balance'];
 
             if ($closingBalance < $systemBalance) {
                 return response()->json([
-                    'message' => 'Shortage detected.',
+                    'message' => 'Shortage detected. Closure denied.',
                     'system_balance' => $systemBalance,
                     'provided_balance' => $closingBalance,
                     'difference' => $systemBalance - $closingBalance
@@ -196,7 +212,7 @@ class SessionController extends Controller
                 'cash_difference' => $closingBalance - $systemBalance,
             ]);
 
-            return response()->json(['message' => 'Closed', 'data' => $shift]);
+            return response()->json(['message' => 'Shift closed successfully', 'data' => $shift]);
         });
     }
 }
