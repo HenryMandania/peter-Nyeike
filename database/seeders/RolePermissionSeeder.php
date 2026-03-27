@@ -23,8 +23,6 @@ class RolePermissionSeeder extends Seeder
         $apiRole = Role::firstOrCreate(['name' => 'api-user', 'guard_name' => 'sanctum']);
 
         // 2️⃣ Define Resources & Actions
-        // Unified 'expensecategory' to match your list's 'expense-category' logic if needed, 
-        // but kept as 'expensecategory' for database consistency.
         $resources = [
             'supplier', 'companypayment', 'company', 'expensecategory', 
             'expense', 'floatrequest', 'item', 'mpesatransaction', 
@@ -40,6 +38,7 @@ class RolePermissionSeeder extends Seeder
         }
         
         // Create Custom Business & Specific Web Permissions
+        // Added 'float-request' variants here to satisfy the Field Operator sync
         $customPerms = [
             'dashboard.view', 
             'purchase.approve', 
@@ -47,7 +46,9 @@ class RolePermissionSeeder extends Seeder
             'purchase.sell', 
             'purchase.reject', 
             'floatrequest.approve', 
-            'floatrequest.reject'
+            'floatrequest.reject',
+            'float-request.view',   // Added to match your operator list
+            'float-request.create', // Added to match your operator list
         ];
 
         foreach ($customPerms as $perm) {
@@ -66,7 +67,7 @@ class RolePermissionSeeder extends Seeder
 
         // 4️⃣ Assign Web Permissions
         
-        // Admin: Everything
+        // Admin: Everything on web guard
         Role::findByName('admin', 'web')->syncPermissions(Permission::where('guard_name', 'web')->get());
         
         // Supervisor: All View permissions + Specific Actions
@@ -74,11 +75,11 @@ class RolePermissionSeeder extends Seeder
             Permission::where('guard_name', 'web')
                 ->where(function($query) {
                     $query->where('name', 'like', '%.view')
-                          ->orWhereIn('name', ['purchase.approve', 'floatrequest.approve']);
+                          ->orWhereIn('name', ['purchase.approve', 'floatrequest.approve', 'floatrequest.reject']);
                 })->get()
         );
 
-        // Field Operator: Limited Create/View access
+        // Field Operator: Corrected to use the created permission names
         Role::findByName('field-operator', 'web')->syncPermissions([
             'expense.create', 'expense.view', 'expensecategory.view',
             'float-request.view', 'float-request.create', 'item.create', 'item.view',
@@ -86,8 +87,10 @@ class RolePermissionSeeder extends Seeder
             'supplier.create', 'supplier.view', 'dashboard.view'
         ]);
 
-        // Assign Permissions to API role
-        $apiRole->syncPermissions($apiPermissions);
+        // Assign Permissions to API role (ensure they are the sanctum ones)
+        $apiRole->syncPermissions(
+            Permission::where('guard_name', 'sanctum')->whereIn('name', $apiPermissions)->get()
+        );
 
         // Clean up cache again
         app()[PermissionRegistrar::class]->forgetCachedPermissions();
