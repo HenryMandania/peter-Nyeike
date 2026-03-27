@@ -43,7 +43,21 @@ class SessionController extends Controller
             $openShifts = $query->get();
 
             if ($openShifts->isEmpty()) {
-                return response()->json(['message' => 'No active shifts found.', 'data' => null], 200);
+                return response()->json([
+                    'message' => 'No active shifts found.',
+                    'data' => [
+                        'is_admin_view'          => (bool)$isAdminOrSupervisor,
+                        'active_shifts_count'    => 0,
+                        'global_running_balance' => 0.0,
+                        'total_purchased'        => 0.0,
+                        'total_transaction_fees' => 0.0,
+                        'total_expenses'         => 0.0,
+                        'total_float_received'   => 0.0,
+                        'personal_shift'         => null,
+                        'company_name'           => $isAdminOrSupervisor ? 'All Companies' : 'No Active Shift',
+                        'timestamp'              => now()->toIso8601String(),
+                    ]
+                ], 200);
             }
 
             // 3. Aggregate calculated sums (Fast - no extra DB hits)
