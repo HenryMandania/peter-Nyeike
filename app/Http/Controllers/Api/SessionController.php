@@ -20,85 +20,78 @@ class SessionController extends Controller
         try {
             $user = auth()->user();
             if (!$user) return response()->json(['message' => 'Unauthenticated'], 401);
-
-            // 1. Determine Role (Safe check)
+        
             $isAdminOrSupervisor = method_exists($user, 'hasAnyRole') 
                 ? $user->hasAnyRole(['admin', 'supervisor']) 
                 : false;
-
-            // 2. Optimized Query (Database does the heavy lifting)
+        
+            // 1. Get the IDs of the latest shift for every user
+            // This ensures we capture the 10k/20k from closed agents and 10k from open agents
+            $latestShiftIds = Shift::select(DB::raw('MAX(id) as id'))
+                ->groupBy('user_id')
+                ->pluck('id');
+        
+            // 2. Fetch these specific shifts with sums
             $query = Shift::with(['user', 'company'])
-                ->where('status', 'open')
+                ->whereIn('id', $latestShiftIds)
                 ->withSum('purchases as total_purchased', 'total_amount')
                 ->withSum('purchases as total_fees', 'transaction_fee')
                 ->withSum('expenses as total_expenses', 'amount')
-                ->withSum(['floatRequests as total_float' => function ($query) {
-                    $query->where('status', 'approved');
+                ->withSum(['floatRequests as total_float' => function ($q) {
+                    $q->where('status', 'approved');
                 }], 'amount');
-
+        
+            // If not admin, we only care about the user's specific latest state for the main query
             if (!$isAdminOrSupervisor) {
                 $query->where('user_id', $user->id);
             }
-
-            $openShifts = $query->get();
-
-            if ($openShifts->isEmpty()) {
-                return response()->json([
-                    'message' => 'No active shifts found.',
-                    'data' => [
-                        'is_admin_view'          => (bool)$isAdminOrSupervisor,
-                        'active_shifts_count'    => 0,
-                        'global_running_balance' => 0.0,
-                        'total_purchased'        => 0.0,
-                        'total_transaction_fees' => 0.0,
-                        'total_expenses'         => 0.0,
-                        'total_float_received'   => 0.0,
-                        'personal_shift'         => null,
-                        'company_name'           => $isAdminOrSupervisor ? 'All Companies' : 'No Active Shift',
-                        'timestamp'              => now()->toIso8601String(),
-                    ]
-                ], 200);
-            }
-
-            // 3. Aggregate calculated sums (Fast - no extra DB hits)
+        
+            $relevantShifts = $query->get();
+        
+            // 3. Calculate the Grand Running Balance (The "40k" Logic)
+            // Summing: (Active Shifts Calculated) + (Closed Shifts Final Balances)
+            $grandRunningBalance = (float) $relevantShifts->sum(function($shift) use ($balanceService) {
+                if ($shift->status === 'open') {
+                    return $balanceService->calculate($shift);
+                }
+                return $shift->closing_balance ?? 0;
+            });
+        
+            // 4. Extract standard aggregates (Only for open shifts to keep totals clean)
+            $openShifts = $relevantShifts->where('status', 'open');
             $grandTotalPurchased = (float) $openShifts->sum('total_purchased');
             $grandTotalFees      = (float) $openShifts->sum('total_fees');
             $grandTotalExpenses  = (float) $openShifts->sum('total_expenses');
             $grandTotalFloat     = (float) $openShifts->sum('total_float');
-            
-            $grandRunningBalance = (float) $openShifts->sum(function($shift) use ($balanceService) {
-                return $balanceService->calculate($shift);
-            });
-
-            // 4. Personal Shift Logic (Matches your reference version)
-            $myPersonalShift = $openShifts->firstWhere('user_id', $user->id);
+        
+            // 5. Personal Shift Logic
+            $myLatestShift = $relevantShifts->firstWhere('user_id', $user->id);
             $personalShiftData = null;
-
-            if ($myPersonalShift) {
+        
+            if ($myLatestShift && $myLatestShift->status === 'open') {
                 $personalShiftData = [
-                    'shift_details'   => $myPersonalShift,
-                    'running_balance' => (float)$balanceService->calculate($myPersonalShift),
-                    'company_name'    => $myPersonalShift->company?->name ?? 'Internal',
+                    'shift_details'   => $myLatestShift,
+                    'running_balance' => (float)$balanceService->calculate($myLatestShift),
+                    'company_name'    => $myLatestShift->company?->name ?? 'Internal',
                 ];
             }
-
-            // 5. Final Response
+        
             return response()->json([
-                'message' => $isAdminOrSupervisor ? 'Global active summary fetched' : 'Your active shift summary fetched',
+                'message' => $isAdminOrSupervisor ? 'Global summary fetched' : 'Your summary fetched',
                 'data' => [
                     'is_admin_view'          => (bool)$isAdminOrSupervisor,
                     'active_shifts_count'    => $openShifts->count(),
-                    'global_running_balance' => $grandRunningBalance,
+                    'global_running_balance' => $grandRunningBalance,  
                     'total_purchased'        => $grandTotalPurchased,
                     'total_transaction_fees' => $grandTotalFees,
                     'total_expenses'         => $grandTotalExpenses,
                     'total_float_received'   => $grandTotalFloat,
                     'personal_shift'         => $personalShiftData,
-                    'company_name'           => $this->resolveHeaderCompanyName($isAdminOrSupervisor, $myPersonalShift),
+                    'company_name'           => $this->resolveHeaderCompanyName($isAdminOrSupervisor, $myLatestShift),
                     'timestamp'              => now()->toIso8601String(),
                 ]
             ]);
-            
+        
         } catch (\Exception $e) {
             Log::error('Session status error: ' . $e->getMessage());
             return response()->json(['message' => 'Server Error', 'error' => $e->getMessage()], 500);
